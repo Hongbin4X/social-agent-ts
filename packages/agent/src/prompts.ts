@@ -60,6 +60,19 @@ export const GROUNDING_RULES = [
   "- Write the post in the same language as the topic.",
 ].join("\n")
 
+// ── image 模式追加规则（Task 2：文字+图片占位符）──
+// 背景：当 input.modes 含 "image" 时，前端要在正文里渲染出对应的图片占位块，并需要一段可读的
+//   图片描述用于后续「一键生成图片」。约定 token 语法固定为 [[img:N]]（与 @social/shared 的
+//   parseImageRefs/stripImageTokens 等纯函数约定一致，N 从 1 起）。
+// 只在 image 模式开启时追加这段规则，避免非 image 场景里污染 prompt、也避免模型无意义地强插图片。
+export const IMAGE_PLACEHOLDER_RULES = [
+  "Image placeholders (only because image mode is ON):",
+  "- Decide where 1-3 images genuinely help this specific post. Insert a marker [[img:1]], [[img:2]] ... on its own line at each spot in the body.",
+  "- Also return an \"imageSlots\" array; each item = { \"ref\": <the number used in the body marker>, \"description\": \"<a concrete, shootable image description: subject, composition, style, mood, colors>\" }.",
+  "- The description must stay grounded in the brand context — do NOT depict invented products, logos, prices, or specs. Describe the scene/benefit/feeling.",
+  "- ref numbers in imageSlots must match the [[img:N]] markers in the body exactly. Use as few images as the content truly needs.",
+].join("\n")
+
 /** 内置默认实现：从上面的 Map 取模板；仅 generateVariants 走模板，其它动作返回 null（adapter 用内联 prompt）。 */
 export class DefaultPromptTemplateProvider implements PromptTemplateProvider {
   async getTemplate(platform: Platform, actionType: BillingActionType): Promise<string | null> {
@@ -85,6 +98,9 @@ export function buildVariantPrompt(
 ): PromptMessages {
   const b = input.brand
   const topic = input.topic || "New social topic"
+  // image 模式开关：只有 modes 显式含 "image" 才在契约里加 imageSlots 字段与占位规则，
+  // 保持 copy-only 场景的 prompt 干净、不引入无关约束。
+  const wantsImage = (input.modes ?? []).includes("image")
   // system = 平台人格模板（占位符注入后） + 通用防编造底线。
   // grounding 放最后，作为不可被平台/DB 模板绕过的硬约束。
   const system =
@@ -111,18 +127,30 @@ export function buildVariantPrompt(
     b.forbiddenTopics ? `Avoid these topics: ${b.forbiddenTopics}` : "",
   ].filter((l) => l !== "")
 
+  // 输出契约：copy 字段固定不变；image 模式追加 imageSlots 字段说明 + 独立的占位符规则段，
+  // 二者都用 filter 剔除空串挂载，保证 copy-only 时 user 消息里完全不出现 image 相关文案。
+  const contractLines = [
+    "Return ONLY a JSON object (no prose, no code fences) with exactly these string fields:",
+    '  "hook": short attention-grabbing first line / title',
+    '  "body": the main post copy for this platform',
+    '  "hashtags": space-separated hashtags ("" if the platform should have none)',
+    '  "cta": the call to action',
+    '  "format": e.g. "Landscape 16:9", "Feed 1:1", "Text post · No media"',
+    '  "mediaAsset": short label of the media, e.g. "Generated image" / "No media"',
+  ]
+  if (wantsImage) {
+    contractLines.push(
+      '  "imageSlots": array of { "ref": <int>, "description": "<detailed image description>" } (place matching [[img:<ref>]] markers inside "body")',
+    )
+  }
+
   const user = [
     context.join("\n"),
     `Write one ${platform} post about this topic: ${topic}`,
-    [
-      "Return ONLY a JSON object (no prose, no code fences) with exactly these string fields:",
-      '  "hook": short attention-grabbing first line / title',
-      '  "body": the main post copy for this platform',
-      '  "hashtags": space-separated hashtags ("" if the platform should have none)',
-      '  "cta": the call to action',
-      '  "format": e.g. "Landscape 16:9", "Feed 1:1", "Text post · No media"',
-      '  "mediaAsset": short label of the media, e.g. "Generated image" / "No media"',
-    ].join("\n"),
-  ].join("\n\n")
+    contractLines.join("\n"),
+    wantsImage ? IMAGE_PLACEHOLDER_RULES : "",
+  ]
+    .filter((l) => l !== "")
+    .join("\n\n")
   return { system, user }
 }

@@ -9,6 +9,7 @@ import type {
   BrandContext,
   CreditBillingGateway,
   GenerateVariantsInput,
+  Platform,
 } from "@social/shared"
 import {
   buildVariantPrompt,
@@ -332,5 +333,24 @@ describe("防编造 grounding 约束（buildVariantPrompt）", () => {
     const { system } = buildVariantPrompt("X", { topic: "x", platforms: ["X"], brand: BRAND }, overridden)
     expect(system).toContain("You are a fully custom brand voice for Northstar AI.")
     expect(system).toContain(GROUNDING_RULES)
+  })
+})
+
+describe("buildVariantPrompt image 模式", () => {
+  const base = {
+    topic: "morning coffee",
+    // 注：brief 原稿写的是 `["Instagram"] as const`，但 GenerateVariantsInput.platforms 是可变的
+    // Platform[]，readonly 元组类型不兼容会导致 tsc 报错；改成 `as Platform[]` 保持同样的字面量语义。
+    platforms: ["Instagram"] as Platform[],
+    brand: { brandName: "Bean", description: "specialty coffee", targetMarket: "US" },
+  }
+  it("image 模式：契约含 imageSlots 与 [[img:N]] 指示", () => {
+    const { user } = buildVariantPrompt("Instagram", { ...base, modes: ["copy", "image"] }, "TPL")
+    expect(user).toContain("imageSlots")
+    expect(user).toContain("[[img:")
+  })
+  it("非 image 模式：不出现 imageSlots 指示", () => {
+    const { user } = buildVariantPrompt("Instagram", { ...base, modes: ["copy"] }, "TPL")
+    expect(user).not.toContain("imageSlots")
   })
 })
