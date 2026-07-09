@@ -231,8 +231,8 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                     creationMethod === "manual"
                       ? t("Manual mode — you'll write the copy for each network in the next step.", "手动模式——下一步你将为每个平台自行撰写文案。")
                       : t(
-                          "So, what do you want to post? A product rave, a launch teaser, an event warm-up — the more you tell the AI, the sharper it writes.\ne.g. Recommend a focus-boosting gadget for young professionals, all about barely-there wear, in a professional-yet-witty tone, ending with a nudge to comment.",
-                          "聊聊你想发点什么？不管是单品种草、新品剧透还是活动预热，多透露一点细节 AI 会写得更准。\n例如：推荐一款面向职场新人的自律数码好物，主打无感佩戴，语气专业幽默，文末引导评论。",
+                          "So, what do you want to post? A product rave, a launch teaser, an event warm-up — the more product detail you share, the sharper the AI writes.\ne.g. Write a rave for my “quiet bladeless fan” — safe for babies and low-noise for all-night sleep — in a professional-yet-witty tone, ending with a nudge to comment.",
+                          "聊聊你想发点什么？不管是单品种草、新品剧透还是活动预热，多透露一点产品细节，AI 会写得更准。\n例如：帮我的“智能静音无叶风扇”写篇种草文，主打母婴安全、低噪整夜好眠，语气专业幽默，文末引导评论。",
                         )
                   }
                   className={cn("min-h-24", creationMethod === "manual" && "cursor-not-allowed bg-muted text-muted-foreground")}
