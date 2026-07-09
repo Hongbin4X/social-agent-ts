@@ -103,6 +103,7 @@ export class LlmContentGenerator implements ContentGenerator, UsageReporting {
       cta?: string
       format?: string
       mediaAsset?: string
+      imageSlots?: Array<{ ref?: number; description?: string }>
     }>([
       { role: "system", content: system },
       { role: "user", content: user },
@@ -127,6 +128,11 @@ export class LlmContentGenerator implements ContentGenerator, UsageReporting {
       publishMode: mode,
       state: mode === "manual" ? "Manual fallback" : "Valid",
       suggestedTime: "10:00",
+      // 只有 image 模式才把模型的 imageSlots 落到 PostVariant；非 image 模式恒 undefined
+      // （前端据此判断是否渲染内联配图占位块，不能凭 imageSlots 是否存在误判模式）。
+      imageSlots: (input.modes ?? []).includes("image")
+        ? mapImageSlots(parsed.imageSlots, parsed.format?.trim() || d.format)
+        : undefined,
     }
   }
 
@@ -191,10 +197,14 @@ export class LlmContentGenerator implements ContentGenerator, UsageReporting {
       throw new GeneratorNotConfiguredError("图片生成未接通：未配置 GENERATION_IMAGE_MODEL")
     }
     const ratio = ratioFromFormat(input.format)
+    // 有槽描述（description）优先作出图主来源——它比 hook+body 拼接更具体（构图/风格/色彩），
+    // 是用户在 UI 上可编辑的字段；缺省才退回旧的 hook+body 拼接（兼容非 image 模式/无槽场景）。
     const prompt = [
       input.instruction ? `Modify the image: ${input.instruction}.` : `Create a social media image.`,
       `Platform: ${input.platform}. Aspect ratio: ${ratio}.`,
-      `Post hook: ${input.hook}. Context: ${input.body}.`,
+      input.description?.trim()
+        ? `Image: ${input.description.trim()}.`
+        : `Post hook: ${input.hook}. Context: ${input.body}.`,
       input.brand.visualStyle ? `Visual style: ${input.brand.visualStyle}.` : "",
       input.brand.brandColors ? `Brand colors: ${input.brand.brandColors}.` : "",
     ]
@@ -395,6 +405,23 @@ function sanitizePlatforms(raw: string[] | undefined, allowed: Platform[]): Plat
 function ratioFromFormat(format: string): string {
   const m = format.match(/(\d+(?:\.\d+)?:\d+(?:\.\d+)?)/)
   return m ? m[1] : "1:1"
+}
+
+// 把模型返回的 imageSlots 归一化：过滤非法 ref（非正整数）、按 ref 去重（保留先出现的一条）、
+// 补 status="empty"/ratio（从 format 推）。ref 沿用模型值——它要跟正文里的 [[img:N]] token 对齐，
+// 不能在这里重新编号，否则前端渲染占位块时对不上号。
+function mapImageSlots(
+  raw: Array<{ ref?: number; description?: string }> | undefined,
+  format: string,
+): import("@social/shared").ImageSlot[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const ratio = ratioFromFormat(format)
+  const seen = new Set<number>()
+  const slots = raw
+    .filter((s) => Number.isInteger(s.ref) && (s.ref as number) > 0)
+    .filter((s) => (seen.has(s.ref as number) ? false : (seen.add(s.ref as number), true)))
+    .map((s) => ({ ref: s.ref as number, description: (s.description ?? "").trim(), ratio, status: "empty" as const }))
+  return slots.length > 0 ? slots : undefined
 }
 
 // 把比例粗映射到 OpenAI 图片端点支持的 size（仅粗分横/竖/方）。

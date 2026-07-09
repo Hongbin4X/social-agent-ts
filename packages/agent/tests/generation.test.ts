@@ -336,6 +336,48 @@ describe("防编造 grounding 约束（buildVariantPrompt）", () => {
   })
 })
 
+describe("LlmContentGenerator imageSlots（image 模式解析 + 出图用 description）", () => {
+  // 复用顶层 chatResponse 桩（等价于 brief 里的 fakeFetch，避免重复造轮子）。
+  function makeLlm(fetchImpl: typeof fetch) {
+    return new LlmContentGenerator({
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "test-key",
+      textModel: "test-text-model",
+      fetchImpl,
+      prompts: new DefaultPromptTemplateProvider(),
+    })
+  }
+  const brand: BrandContext = { brandName: "B", description: "d", targetMarket: "US" }
+
+  it("image 模式解析 imageSlots，ref/描述保留、status=empty、ratio 从 format 推", async () => {
+    const fetchImpl = vi.fn(async () =>
+      chatResponse({ hook: "h", body: "b [[img:1]]", imageSlots: [{ ref: 1, description: "latte closeup" }] }),
+    ) as unknown as typeof fetch
+    const llm = makeLlm(fetchImpl)
+    const { variants } = await llm.generateVariants({
+      topic: "t",
+      platforms: ["Instagram"] as Platform[],
+      brand,
+      modes: ["copy", "image"],
+    })
+    expect(variants[0].imageSlots).toEqual([
+      { ref: 1, description: "latte closeup", ratio: "1:1", status: "empty" },
+    ])
+  })
+
+  it("非 image 模式：imageSlots 为 undefined", async () => {
+    const fetchImpl = vi.fn(async () => chatResponse({ hook: "h", body: "b" })) as unknown as typeof fetch
+    const llm = makeLlm(fetchImpl)
+    const { variants } = await llm.generateVariants({
+      topic: "t",
+      platforms: ["Instagram"] as Platform[],
+      brand,
+      modes: ["copy"],
+    })
+    expect(variants[0].imageSlots).toBeUndefined()
+  })
+})
+
 describe("buildVariantPrompt image 模式", () => {
   const base = {
     topic: "morning coffee",
