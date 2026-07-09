@@ -230,7 +230,10 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                   placeholder={
                     creationMethod === "manual"
                       ? t("Manual mode — you'll write the copy for each network in the next step.", "手动模式——下一步你将为每个平台自行撰写文案。")
-                      : t("Describe what this post is about — the agent drafts per-network copy from it.", "描述这条帖子的主题——AI 会据此为各平台起草文案。")
+                      : t(
+                          "Nail three things and the AI nails the draft: the hook, who it's for, and the action you want — the more specific, the better.\ne.g. Show skincare newcomers the right order — serum before moisturizer — in a warm, friendly tone, ending with a nudge to grab our routine cheatsheet.",
+                          "想清楚三件事，AI 就能写好：讲什么亮点、写给谁看、想让人做什么——越具体越好。\n例：面向敏感肌新手，讲清「先精华、后面霜」的正确顺序，语气亲切，结尾引导领取护肤清单。",
+                        )
                   }
                   className={cn("min-h-24", creationMethod === "manual" && "cursor-not-allowed bg-muted text-muted-foreground")}
                 />
