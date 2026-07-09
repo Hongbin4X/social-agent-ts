@@ -125,7 +125,7 @@ export function BrandProfilePanel() {
                         className={cn(
                           "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                           profile.contentGoals.includes(g)
-                            ? "border-brand bg-brand-muted text-foreground"
+                            ? "border-brand bg-brand-muted text-brand-muted-foreground"
                             : "border-border bg-background text-muted-foreground hover:bg-muted",
                         )}
                       >

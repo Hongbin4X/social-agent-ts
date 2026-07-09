@@ -92,7 +92,7 @@ export function Sidebar() {
 
       {isAgent ? (
         <div className="mt-1 px-3 text-xs text-muted-foreground">
-          <span className="block rounded-md bg-brand-muted px-3 py-1.5 font-medium text-foreground">
+          <span className="block rounded-md bg-brand-muted px-3 py-1.5 font-medium text-brand-muted-foreground">
             {te(NAV_LABELS[agentTab] ?? { en: agentTab, zh: agentTab })}
           </span>
         </div>

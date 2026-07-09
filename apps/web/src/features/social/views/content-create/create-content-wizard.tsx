@@ -190,7 +190,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                         onClick={() => setCreationMethod(k)}
                         className={cn(
                           "rounded-md border px-2 py-2 text-xs font-medium",
-                          creationMethod === k ? "border-brand bg-brand-muted text-foreground" : "border-border text-muted-foreground hover:bg-muted",
+                          creationMethod === k ? "border-brand bg-brand-muted text-brand-muted-foreground" : "border-border text-muted-foreground hover:bg-muted",
                         )}
                       >
                         {t(en, zh)}
@@ -210,7 +210,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                           className={cn(
                             "rounded-md border px-2 py-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50",
                             selected
-                              ? "border-brand bg-brand-muted text-foreground"
+                              ? "border-brand bg-brand-muted text-brand-muted-foreground"
                               : "border-border text-muted-foreground hover:bg-muted",
                           )}
                         >
@@ -434,7 +434,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                       onClick={() => setScheduleMode(k)}
                       className={cn(
                         "rounded-md border px-3 py-2 text-sm font-medium",
-                        scheduleMode === k ? "border-brand bg-brand-muted text-foreground" : "border-border text-muted-foreground hover:bg-muted",
+                        scheduleMode === k ? "border-brand bg-brand-muted text-brand-muted-foreground" : "border-border text-muted-foreground hover:bg-muted",
                       )}
                     >
                       {t(en, zh)}

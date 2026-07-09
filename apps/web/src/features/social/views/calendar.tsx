@@ -276,7 +276,7 @@ function MonthView({ items, onSelect }: { items: CalendarItem[]; onSelect: (id: 
                         key={item.id}
                         type="button"
                         onClick={() => onSelect(item.id)}
-                        className="flex items-center gap-1 rounded bg-brand-muted px-1.5 py-1 text-left text-[10px] font-medium text-foreground hover:bg-brand/20"
+                        className="flex items-center gap-1 rounded bg-brand-muted px-1.5 py-1 text-left text-[10px] font-medium text-brand-muted-foreground hover:bg-brand/20"
                       >
                         <span className="tabular-nums">{item.time}</span>
                         <span className="line-clamp-1">{item.topic}</span>
