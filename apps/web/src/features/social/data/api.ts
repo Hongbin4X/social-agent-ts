@@ -120,6 +120,7 @@ export const api = {
     body: string
     mediaAsset?: string
     instruction?: string
+    description?: string
   }) =>
     req<{ asset: { id: string; url: string; mimeType: string; ratio: string }; credits: number; generationJobId: string }>(
       "/generate/image",
