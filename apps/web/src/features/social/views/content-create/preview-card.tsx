@@ -1,6 +1,7 @@
 "use client"
 
 import type { PostVariant } from "@social/shared"
+import { splitBodyByImageTokens, stripImageTokens } from "@social/shared"
 import { Button } from "@/components/ui/button"
 import { PlatformBadge } from "@/features/social/components/ui"
 import { useLang } from "@/features/social/i18n"
@@ -15,18 +16,23 @@ export function PreviewCard({
   onCtaPreview,
   onRegenerateImage,
   onEditImage,
+  onGenerateSlot,
 }: {
   variant: PostVariant
   hasImage: boolean
   onCtaPreview: (url?: string) => void
   onRegenerateImage?: () => void
   onEditImage?: () => void
+  /** 按槽出图（正文内联配图占位卡的 Generate 按钮）；不传则占位卡不显示按钮。 */
+  onGenerateSlot?: (ref: number) => void
 }) {
   const { t } = useLang()
   const mode = deriveMode(variant)
   const checks = validations(variant)
   const ratio = ratioOf(variant.format)
   const showMedia = variant.mediaAsset !== "No media"
+  // 有 imageSlots 时走「正文按 token 内联渲染」新路径；无 slots 时维持旧的单媒体块（向后兼容旧数据/非 image 帖子）。
+  const slots = variant.imageSlots ?? []
 
   return (
     <div className="mt-3 space-y-3">
@@ -52,9 +58,34 @@ export function PreviewCard({
         </div>
 
         <p className="mt-3 text-sm font-medium text-foreground">{variant.hook || t("Untitled", "未命名")}</p>
-        <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{variant.body || t("No copy yet.", "尚无文案。")}</p>
+        {/* 正文渲染分两条路径：
+            - 有 imageSlots：按 [[img:N]] token 顺序内联渲染——文本段落 + 每个槽（ready 真图 / 否则描述占位卡 + Generate 按钮），
+              所见即发布（token 本身不会作为文字出现，因为 splitBodyByImageTokens 已把它拆成独立的 image 段）。
+            - 无 imageSlots：维持旧的单段纯文本渲染（向后兼容旧数据 / 非 image 模式生成的帖子）。 */}
+        {slots.length > 0 ? (
+          <div className="mt-1 space-y-2">
+            {splitBodyByImageTokens(variant.body).map((seg, i) =>
+              seg.type === "text" ? (
+                seg.text.trim() ? (
+                  <p key={i} className="whitespace-pre-line text-sm text-muted-foreground">
+                    {seg.text.trim()}
+                  </p>
+                ) : null
+              ) : (
+                <SlotPreview
+                  key={i}
+                  slot={slots.find((s) => s.ref === seg.ref)}
+                  ratio={ratio}
+                  onGenerate={onGenerateSlot}
+                />
+              ),
+            )}
+          </div>
+        ) : (
+          <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{variant.body || t("No copy yet.", "尚无文案。")}</p>
+        )}
 
-        {showMedia ? (
+        {slots.length === 0 && showMedia ? (
           <div
             className="relative mt-3 flex items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-xs text-muted-foreground"
             style={{ aspectRatio: ratio.replace(":", "/") }}
@@ -96,11 +127,11 @@ export function PreviewCard({
               </div>
             ) : null}
           </div>
-        ) : (
+        ) : slots.length === 0 ? (
           <div className="mt-3 flex h-16 items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
             {t("Text-only · no media", "纯文本 · 无媒体")}
           </div>
-        )}
+        ) : null}
 
         {variant.hashtags ? <p className="mt-2 text-xs text-status-scheduled">{variant.hashtags}</p> : null}
         {variant.cta ? (
@@ -134,6 +165,49 @@ export function PreviewCard({
       </div>
 
       <p className="text-xs text-muted-foreground">{t("Lightweight preview to compare platform differences — not a pixel-perfect replica.", "轻量预览，用于对比各平台差异 — 并非像素级还原。")}</p>
+    </div>
+  )
+}
+
+/* ---------- 正文内联配图槽：ready 显示真图，否则显示描述 + Generate 占位卡 ---------- */
+function SlotPreview({
+  slot,
+  ratio,
+  onGenerate,
+}: {
+  slot?: import("@social/shared").ImageSlot
+  ratio: string
+  onGenerate?: (ref: number) => void
+}) {
+  const { t } = useLang()
+  // 防御：正文里有 token 但 imageSlots 里找不到对应 ref（理论上不该发生），不渲染任何东西而不是崩溃。
+  if (!slot) return null
+  return (
+    <div
+      className="relative flex items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-xs text-muted-foreground"
+      style={{ aspectRatio: ratio.replace(":", "/") }}
+    >
+      {slot.url ? (
+        // 真实生成的图片（本地 FS 经 /media 反代）。用户内容动态 URL，用原生 img。
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={slot.url} alt={`img ${slot.ref}`} className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        <div className="flex flex-col items-center gap-1 p-2 text-center">
+          <span className="font-medium">[[img:{slot.ref}]] · {ratio}</span>
+          <span className="line-clamp-2 opacity-80">{slot.description || t("No description yet", "尚无描述")}</span>
+          {onGenerate ? (
+            <button
+              type="button"
+              disabled={slot.status === "generating" || !slot.description.trim()}
+              onClick={() => onGenerate(slot.ref)}
+              className="mt-1 rounded-md bg-brand px-2 py-0.5 text-[11px] font-medium text-brand-foreground disabled:opacity-50"
+            >
+              {/* 铁律2.5：生成中要有过程态文案，不能让用户以为卡死。 */}
+              {slot.status === "generating" ? t("Generating…", "生成中…") : t("Generate", "生成配图")}
+            </button>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 }

@@ -442,6 +442,26 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                         setModifySlot(null)
                         setImageEditOpen(true)
                       }}
+                      onGenerateSlot={(ref) => {
+                        // 正文占位卡的 Generate 按钮：与 ImageSlotPanel 的按槽出图走同一路径——
+                        // 付费确认（30cr）后 generateImage 带 slotRef + description 定向出该槽的图。
+                        const slot = current.imageSlots?.find((s) => s.ref === ref)
+                        if (!slot) return
+                        setPaid({
+                          label: t("Generate image", "生成配图"),
+                          credits: 30,
+                          run: () =>
+                            generateImage({
+                              platform: current.platform,
+                              format: current.format,
+                              hook: current.hook,
+                              body: current.body,
+                              mediaAsset: current.mediaAsset,
+                              slotRef: ref,
+                              description: slot.description,
+                            }),
+                        })
+                      }}
                     />
                   </div>
                 </div>
