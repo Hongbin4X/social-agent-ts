@@ -103,7 +103,7 @@ generateRoutes.post("/plan", async (c) => {
 
 // ── 生成/修改图片 ──（instruction 存在=Modify）
 generateRoutes.post("/image", async (c) => {
-  const body = await c.req.json<{ projectId?: string; platform?: Platform; format?: string; hook?: string; body?: string; mediaAsset?: string; instruction?: string }>().catch(() => null)
+  const body = await c.req.json<{ projectId?: string; platform?: Platform; format?: string; hook?: string; body?: string; mediaAsset?: string; instruction?: string; description?: string }>().catch(() => null)
   const p = await prepare(c, body?.projectId)
   if ("error" in p) return p.error
   if (!body?.platform || !body.format) return c.json({ error: "invalid_request", message: "platform 与 format 必填" }, 400)
@@ -115,6 +115,8 @@ generateRoutes.post("/image", async (c) => {
     body: body.body ?? "",
     brand: p.brand,
     instruction: body.instruction,
+    // 图片槽描述：有值时生成层用它作为出图 prompt 主来源（取代 hook+body 拼接），见 GenerateImageInput.description。
+    description: body.description,
   }
   const result = await getContainer().generation.runGenerateImage(p.ctx, input)
   const jobId = await recordJob(p.repos, p.ctx, body.instruction ? "modifyImage" : "regenerateImage", input, result)
@@ -130,11 +132,15 @@ generateRoutes.post("/image", async (c) => {
     const stored = await container.media.put({ key, body: bytes, contentType: m[1] })
     url = stored.url
   }
+  // studio 编辑阶段帖子尚未落库，此处媒体行不关联 variantId/postId（真正的图-变体绑定由 image_slots 在存档时持久化）；
+  // 这里仅补 prompt=槽描述、model=实际调用模型，做审计与计费血缘留痕。
   const asset = await p.repos.media.create(p.ctx.projectId, p.ctx.workspaceId, {
     kind: "image",
     url,
     mimeType: result.data.mimeType,
     ratio: result.data.ratio,
+    prompt: body.description,
+    model: result.usage?.model,
   })
   return c.json({ asset, credits: result.actualCredits, generationJobId: jobId })
 })
