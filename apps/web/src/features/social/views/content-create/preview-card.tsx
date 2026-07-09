@@ -1,7 +1,7 @@
 "use client"
 
 import type { PostVariant } from "@social/shared"
-import { splitBodyByImageTokens, stripImageTokens } from "@social/shared"
+import { splitBodyByImageTokens } from "@social/shared"
 import { Button } from "@/components/ui/button"
 import { PlatformBadge } from "@/features/social/components/ui"
 import { useLang } from "@/features/social/i18n"
