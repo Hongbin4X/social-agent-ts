@@ -129,6 +129,9 @@
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
+  /* 深色主题必须加深品牌淡色调：light 值(0.95 近白)在深色下配 text-foreground(0.985 白)/text-brand 会看不清。
+     这是所有选中态高亮(bg-brand-muted)与品牌标签共用的令牌，改这一处即全站修复；深紫底配白字对比充足。 */
+  --brand-muted: oklch(0.32 0.09 285);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
@@ -165,6 +168,8 @@
     --muted-foreground: oklch(0.708 0 0);
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
+    /* 同 .dark：深色主题加深品牌淡色调，修复选中态高亮(bg-brand-muted)看不清文字的问题。 */
+    --brand-muted: oklch(0.32 0.09 285);
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
