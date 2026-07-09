@@ -5,8 +5,9 @@ import {
   nextImageRef,
   insertImageToken,
   splitBodyByImageTokens,
-  type ImageSlot,
 } from "../src/image-slots"
+// ImageSlot 归 types.ts（image-slots.ts 只管位置、不管描述），从真源导入避免 tsconfig 纳入 tests 后编译报错。
+import type { ImageSlot } from "../src/types"
 
 const slot = (ref: number): ImageSlot => ({ ref, description: `d${ref}`, status: "empty" })
 
