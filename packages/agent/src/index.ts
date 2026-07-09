@@ -1,18 +1,47 @@
-// @social/agent —— agent 编排层占位（P0 未实现）。
-// 未来集成 agent 框架时，这里定义"生成能力"的统一入口：内容变体、7 天计划、图片生成/修改、运营推荐。
-// 铁律：模型调用一律走 GLBGPT 模型层；每个付费动作对应 @social/shared 的 BillingActionType / CREDIT_COSTS，
-// 由后端在执行前向 GLBGPT 计费系统预扣、执行后回写 actual credits。
+// @social/agent 桶文件：生成层对外入口（apps/server 从这里拿 service / 装配 / 端口类型）。
+//
+// 典型用法（apps/server 里）：
+//   const generator = createGeneratorFromEnv()            // 默认桩；配齐 env 则真模型
+//   const service = new GenerationService({ generator, billing })
+//   const r = await service.runGenerateVariants(ctx, input)
+//   if (r.ok) { /* 落 ssa_generation_job：r.data.variants + r.reservationId + r.actualCredits + r.usage */ }
+//   else      { /* 据 r.code 映射响应，credits 已退款 */ }
 
-import type { BillingActionType } from "@social/shared"
+// 端口与能力类型
+export type {
+  ContentGenerator,
+  PromptTemplateProvider,
+  PromptMessages,
+  UsageReporting,
+} from "./ports"
+export { isUsageReporting } from "./ports"
 
-/** 一次 agent 生成任务的通用信封。actionType 决定计费口径。具体实现待接入 agent 框架后补。 */
-export interface AgentTask<TInput = unknown, TOutput = unknown> {
-  actionType: BillingActionType
-  input: TInput
-  run(): Promise<TOutput>
-}
+// 编排 service
+export { GenerationService } from "./service"
+export type {
+  GenerationContext,
+  GenerationServiceDeps,
+  GenerationResult,
+} from "./service"
 
-/** 占位：后续由具体 agent 框架实现。现在返回未实现错误，避免静默降级（项目铁律：遇问题直接报错）。 */
-export function createAgentRunner(): never {
-  throw new Error("@social/agent 尚未实现：P0 阶段仅占位，接入 agent 框架后再实现")
-}
+// 生成器 adapter
+export { StubContentGenerator, buildStubVariant, PLATFORM_VARIANT_DEFAULTS } from "./adapters/stub"
+export { LlmContentGenerator, type LlmContentGeneratorConfig } from "./adapters/llm"
+
+// prompt 模板（数据驱动、可被后台覆盖）
+export {
+  DefaultPromptTemplateProvider,
+  buildVariantPrompt,
+  VARIANT_SYSTEM_TEMPLATES,
+} from "./prompts"
+
+// 环境装配
+export {
+  generatorConfigFromEnv,
+  createGeneratorFromEnv,
+  type GeneratorEnvConfig,
+  type CreateGeneratorDeps,
+} from "./config"
+
+// 错误类型
+export { GeneratorError, GeneratorNotConfiguredError } from "./errors"

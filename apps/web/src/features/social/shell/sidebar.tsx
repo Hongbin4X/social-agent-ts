@@ -2,6 +2,8 @@
 
 import { cn } from "@/lib/utils"
 import { useSocial } from "@/features/social/store"
+import { useLang } from "@/features/social/i18n"
+import { NAV_LABELS } from "@/features/social/i18n/labels"
 import {
   Home,
   LayoutGrid,
@@ -38,14 +40,16 @@ export function Logo() {
 
 export function Sidebar() {
   const { view, agentTab, setView, goToAgent } = useSocial()
+  const { t, te } = useLang()
 
   const isAgent = view === "agent"
 
   const primary = [
-    { key: "home", label: "Home", icon: Home, active: view === "home", onClick: () => setView("home") },
-    { key: "models", label: "Models & Tools", icon: LayoutGrid, active: false, onClick: () => {} },
-    { key: "multimodal", label: "Multimodal", icon: Layers, active: false, onClick: () => {} },
+    { key: "home", label: t("Home", "首页"), icon: Home, active: view === "home", onClick: () => setView("home") },
+    { key: "models", label: t("Models & Tools", "模型与工具"), icon: LayoutGrid, active: false, onClick: () => {} },
+    { key: "multimodal", label: t("Multimodal", "多模态"), icon: Layers, active: false, onClick: () => {} },
     {
+      // Super Social Agent 是产品名，保留不翻。
       key: "agent",
       label: "Super Social Agent",
       icon: Megaphone,
@@ -79,7 +83,7 @@ export function Sidebar() {
             <span className="truncate">{item.label}</span>
             {item.key === "agent" ? (
               <span className="ml-auto rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-brand-foreground">
-                New
+                {t("New", "新")}
               </span>
             ) : null}
           </button>
@@ -89,7 +93,7 @@ export function Sidebar() {
       {isAgent ? (
         <div className="mt-1 px-3 text-xs text-muted-foreground">
           <span className="block rounded-md bg-brand-muted px-3 py-1.5 font-medium text-foreground">
-            {agentTab}
+            {te(NAV_LABELS[agentTab] ?? { en: agentTab, zh: agentTab })}
           </span>
         </div>
       ) : null}
@@ -97,7 +101,7 @@ export function Sidebar() {
       <div className="mx-4 my-4 border-t border-border" />
 
       <div className="flex items-center gap-2 px-4 pb-2 text-sm font-semibold text-foreground">
-        <span className="text-muted-foreground">≡</span> My Tools
+        <span className="text-muted-foreground">≡</span> {t("My Tools", "我的工具")}
       </div>
       <div className="flex flex-col gap-1 overflow-y-auto px-3 pb-4">
         {MY_TOOLS.map((t) => (

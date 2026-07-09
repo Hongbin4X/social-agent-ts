@@ -1,0 +1,99 @@
+// 前端 → 后端 API 客户端。
+// 走 Next 反代的同源 /bff/*（→ 后端 /api/*）。本地开发用固定 dev userId（对齐后端 DEV_FAKE_USER_ID）。
+// 生产改为携带 GLBGPT JWT，这里只需换 authHeaders() 一处。
+
+import type {
+  Account,
+  BrandProfile,
+  CalendarItem,
+  GenerateVariantsInput,
+  Platform,
+  PostVariant,
+  SocialPost,
+} from "@social/shared"
+
+// 本地开发身份（与后端 .env 的 DEV_FAKE_USER_ID 一致）。
+const DEV_USER_ID = process.env.NEXT_PUBLIC_DEV_USER_ID ?? "1000000000000000001"
+const BFF = "/bff"
+
+function authHeaders(): Record<string, string> {
+  return { "x-user-id": DEV_USER_ID, "Content-Type": "application/json" }
+}
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BFF}${path}`, { ...init, headers: { ...authHeaders(), ...(init?.headers ?? {}) } })
+  const text = await res.text()
+  const data = text ? JSON.parse(text) : {}
+  if (!res.ok) {
+    const msg = (data && (data.message || data.error)) || `请求失败 ${res.status}`
+    throw new Error(`${path}: ${msg}`)
+  }
+  return data as T
+}
+
+// ── 类型（后端返回形状）──
+export interface ApiProject {
+  id: string
+  brandName: string
+  description: string
+  targetMarket: string
+  platforms: Platform[]
+  primaryGoal: BrandProfile["contentGoals"][number]
+  websiteUrl?: string
+  tone?: string
+}
+export interface ApiWorkspace {
+  id: string
+  userId: string
+  name: string
+  timezone: string
+  activeProjectId?: string | null
+}
+
+// ── 端点 ──
+export const api = {
+  // workspace
+  getWorkspace: () => req<{ workspace: ApiWorkspace | null }>("/workspace"),
+  createWorkspace: (input: Record<string, unknown>) =>
+    req<{ workspace: ApiWorkspace; project: ApiProject }>("/workspace", { method: "POST", body: JSON.stringify(input) }),
+  setActiveProject: (projectId: string) =>
+    req<{ ok: boolean; activeProjectId: string }>("/workspace/active-project", { method: "POST", body: JSON.stringify({ projectId }) }),
+
+  // projects
+  getProjects: () => req<{ projects: ApiProject[] }>("/projects"),
+  createProject: (input: Record<string, unknown>) =>
+    req<{ project: ApiProject }>("/projects", { method: "POST", body: JSON.stringify(input) }),
+  getBrandProfile: (projectId: string) => req<{ brandProfile: BrandProfile | null }>(`/projects/${projectId}/brand-profile`),
+  updateBrandProfile: (projectId: string, patch: Record<string, unknown>) =>
+    req<{ brandProfile: BrandProfile }>(`/projects/${projectId}/brand-profile`, { method: "PATCH", body: JSON.stringify(patch) }),
+  getPosts: (projectId: string) => req<{ posts: SocialPost[] }>(`/projects/${projectId}/posts`),
+  getCalendar: (projectId: string) => req<{ calendar: CalendarItem[] }>(`/projects/${projectId}/calendar`),
+
+  // accounts
+  getAccounts: () => req<{ accounts: Account[] }>("/accounts"),
+  addAccount: (input: { platform: Platform; name: string; url?: string }) =>
+    req<{ account: Account }>("/accounts", { method: "POST", body: JSON.stringify(input) }),
+
+  // posts
+  savePost: (input: {
+    projectId: string
+    title: string
+    platforms: Platform[]
+    assetType?: string
+    status?: string
+    hasImage?: boolean
+    variants: PostVariant[]
+  }) => req<{ post: SocialPost }>("/posts", { method: "POST", body: JSON.stringify(input) }),
+
+  // generation
+  generateVariants: (input: { projectId: string } & Omit<GenerateVariantsInput, "brand">) =>
+    req<{ variants: PostVariant[]; credits: number; generationJobId: string }>("/generate/variants", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  generateProfileDraft: (projectId: string, websiteUrl: string) =>
+    req<{ patch: Partial<BrandProfile>; credits: number }>("/generate/profile-draft", {
+      method: "POST",
+      body: JSON.stringify({ projectId, websiteUrl }),
+    }),
+}

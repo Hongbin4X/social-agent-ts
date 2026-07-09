@@ -1,6 +1,7 @@
 "use client"
 
 import { SocialProvider, useSocial } from "@/features/social/store"
+import { LanguageProvider } from "@/features/social/i18n"
 import { Sidebar } from "@/features/social/shell/sidebar"
 import { Topbar } from "@/features/social/shell/topbar"
 import { Toaster } from "@/features/social/shell/toaster"
@@ -25,8 +26,10 @@ function Shell() {
 
 export default function Page() {
   return (
-    <SocialProvider>
-      <Shell />
-    </SocialProvider>
+    <LanguageProvider>
+      <SocialProvider>
+        <Shell />
+      </SocialProvider>
+    </LanguageProvider>
   )
 }

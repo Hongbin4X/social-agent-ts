@@ -1,6 +1,8 @@
 "use client"
 
 import { FolderOpen, History, Sparkles, Crown } from "lucide-react"
+import { useLang } from "@/features/social/i18n"
+import { LangToggle } from "@/features/social/shell/lang-toggle"
 
 function TopButton({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
@@ -12,14 +14,16 @@ function TopButton({ icon: Icon, label }: { icon: React.ElementType; label: stri
 }
 
 export function Topbar() {
+  const { t } = useLang()
   return (
     <header className="flex items-center justify-end gap-2 px-6 py-3">
-      <TopButton icon={FolderOpen} label="Projects" />
-      <TopButton icon={History} label="Chat History" />
-      <TopButton icon={Sparkles} label="My Creations" />
+      <LangToggle />
+      <TopButton icon={FolderOpen} label={t("Projects", "项目")} />
+      <TopButton icon={History} label={t("Chat History", "历史记录")} />
+      <TopButton icon={Sparkles} label={t("My Creations", "我的创作")} />
       <button className="inline-flex items-center gap-1.5 rounded-full bg-upgrade px-3.5 py-2 text-sm font-semibold text-upgrade-foreground hover:opacity-90">
         <Crown className="size-4" />
-        Upgrade Plan
+        {t("Upgrade Plan", "升级套餐")}
       </button>
       <span className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background">
         L

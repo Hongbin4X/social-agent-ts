@@ -3,6 +3,7 @@
 import type { PostVariant } from "@social/shared"
 import { Button } from "@/components/ui/button"
 import { PlatformBadge } from "@/features/social/components/ui"
+import { useLang } from "@/features/social/i18n"
 import { cn } from "@/lib/utils"
 import { CircleCheck, ImageIcon, Info, Pencil, RefreshCw } from "lucide-react"
 import { deriveMode, ratioOf, validations } from "./helpers"
@@ -21,6 +22,7 @@ export function PreviewCard({
   onRegenerateImage?: () => void
   onEditImage?: () => void
 }) {
+  const { t } = useLang()
   const mode = deriveMode(variant)
   const checks = validations(variant)
   const ratio = ratioOf(variant.format)
@@ -33,7 +35,7 @@ export function PreviewCard({
           <div className="flex items-center gap-2">
             <PlatformBadge platform={variant.platform} size="md" />
             <div>
-              <p className="text-sm font-semibold text-foreground">{variant.account || "account"}</p>
+              <p className="text-sm font-semibold text-foreground">{variant.account || t("account", "账号")}</p>
               <p className="text-xs text-muted-foreground">
                 {variant.platform} · {variant.format}
               </p>
@@ -45,12 +47,12 @@ export function PreviewCard({
               mode === "auto" ? "bg-[oklch(0.95_0.05_150)] text-status-published" : "bg-[oklch(0.96_0.04_70)] text-[oklch(0.48_0.13_55)]",
             )}
           >
-            {mode === "auto" ? "Auto publishing available" : "Manual fallback required"}
+            {mode === "auto" ? t("Auto publishing available", "支持自动发布") : t("Manual fallback required", "需转手动发布")}
           </span>
         </div>
 
-        <p className="mt-3 text-sm font-medium text-foreground">{variant.hook || "Untitled"}</p>
-        <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{variant.body || "No copy yet."}</p>
+        <p className="mt-3 text-sm font-medium text-foreground">{variant.hook || t("Untitled", "未命名")}</p>
+        <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{variant.body || t("No copy yet.", "尚无文案。")}</p>
 
         {showMedia ? (
           <div
@@ -59,7 +61,7 @@ export function PreviewCard({
           >
             <span className="flex items-center">
               <ImageIcon className="mr-1.5 size-4" />
-              {hasImage ? `${variant.mediaAsset} · ${ratio}` : `${variant.mediaAsset} placeholder · ${ratio}`}
+              {hasImage ? `${variant.mediaAsset} · ${ratio}` : `${variant.mediaAsset} ${t("placeholder", "占位图")} · ${ratio}`}
             </span>
             {onRegenerateImage || onEditImage ? (
               <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
@@ -69,7 +71,7 @@ export function PreviewCard({
                     onClick={onRegenerateImage}
                     className="inline-flex items-center gap-1 rounded-md border border-border bg-background/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-background"
                   >
-                    <RefreshCw className="size-3" /> Regenerate
+                    <RefreshCw className="size-3" /> {t("Regenerate", "重新生成")}
                   </button>
                 ) : null}
                 {onEditImage ? (
@@ -78,7 +80,7 @@ export function PreviewCard({
                     onClick={onEditImage}
                     className="inline-flex items-center gap-1 rounded-md border border-border bg-background/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-background"
                   >
-                    <Pencil className="size-3" /> Modify
+                    <Pencil className="size-3" /> {t("Modify", "修改")}
                   </button>
                 ) : null}
               </div>
@@ -86,7 +88,7 @@ export function PreviewCard({
           </div>
         ) : (
           <div className="mt-3 flex h-16 items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
-            Text-only · no media
+            {t("Text-only · no media", "纯文本 · 无媒体")}
           </div>
         )}
 
@@ -98,15 +100,15 @@ export function PreviewCard({
             </Button>
             <p className="text-[11px] text-muted-foreground">
               {variant.ctaUrl?.trim()
-                ? "CTA preview — links to the post destination, not an internal page."
-                : "CTA preview — add a destination URL to make it actionable."}
+                ? t("CTA preview — links to the post destination, not an internal page.", "CTA 预览 — 跳转至帖子的目标链接，而非站内页面。")
+                : t("CTA preview — add a destination URL to make it actionable.", "CTA 预览 — 添加目标链接后即可点击跳转。")}
             </p>
           </div>
         ) : null}
       </div>
 
       <div className="rounded-lg border border-border bg-card p-3">
-        <p className="text-xs font-semibold text-foreground">Pre-publish checks</p>
+        <p className="text-xs font-semibold text-foreground">{t("Pre-publish checks", "发布前检查")}</p>
         <ul className="mt-2 space-y-1.5">
           {checks.map((c) => (
             <li key={c.text} className="flex items-start gap-2 text-xs">
@@ -121,7 +123,7 @@ export function PreviewCard({
         </ul>
       </div>
 
-      <p className="text-xs text-muted-foreground">Lightweight preview to compare platform differences — not a pixel-perfect replica.</p>
+      <p className="text-xs text-muted-foreground">{t("Lightweight preview to compare platform differences — not a pixel-perfect replica.", "轻量预览，用于对比各平台差异 — 并非像素级还原。")}</p>
     </div>
   )
 }

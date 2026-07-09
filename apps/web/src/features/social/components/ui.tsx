@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils"
 import { X } from "lucide-react"
 import type { ReactNode } from "react"
 import type { Platform, PostStatus } from "@social/shared"
+import { useLang } from "@/features/social/i18n"
+import { STATUS_LABELS } from "@/features/social/i18n/labels"
 
 /* ---------- Platform identity ---------- */
 
@@ -76,11 +78,12 @@ const STATUS_META: Record<PostStatus, { label: string; dot: string; text: string
 }
 
 export function StatusBadge({ status }: { status: PostStatus }) {
+  const { te } = useLang()
   const m = STATUS_META[status]
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", m.bg, m.text)}>
       <span className={cn("h-1.5 w-1.5 rounded-full", m.dot)} />
-      {m.label}
+      {te(STATUS_LABELS[status])}
     </span>
   )
 }
@@ -119,6 +122,7 @@ export function Modal({
   footer?: ReactNode
   wide?: boolean
 }) {
+  const { t } = useLang()
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -141,7 +145,7 @@ export function Modal({
             type="button"
             onClick={onClose}
             className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-            aria-label="Close"
+            aria-label={t("Close", "关闭")}
           >
             <X className="size-4" />
           </button>
@@ -156,10 +160,11 @@ export function Modal({
 /* ---------- Credits pill ---------- */
 
 export function CreditsPill({ credits, kind = "estimated" }: { credits: number; kind?: "estimated" | "actual" }) {
+  const { t } = useLang()
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
       <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-      {kind === "estimated" ? "Est. credits" : "Actual"}: <span className="text-foreground">{credits}</span>
+      {kind === "estimated" ? t("Est. credits", "预计 credits") : t("Actual", "实际")}: <span className="text-foreground">{credits}</span>
     </span>
   )
 }

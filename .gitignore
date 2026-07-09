@@ -13,6 +13,10 @@ out/
 # turbo
 .turbo/
 
+# 本地媒体落盘（LocalFsMediaStorage；字节不入库，DB 只存引用）
+.media/
+**/.media/
+
 # 环境变量（第三方 key 明文写在各包内的 application 配置里，不在此忽略）
 .env
 .env*.local

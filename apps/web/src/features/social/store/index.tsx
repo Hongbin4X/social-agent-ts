@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -17,6 +18,10 @@ import {
   opsRecommendations,
   planTemplate,
 } from "@/features/social/data/mock"
+// 后端 API 客户端：store 的关键操作（加载数据 / 生成变体 / 建工作区 / 存帖子 / 切项目）走真实后端。
+import { api } from "@/features/social/data/api"
+// store 非组件、用不了 useLang hook，toast 文案用模块级 translate(en,zh)（读当前语言，一次性取值）。
+import { translate } from "@/features/social/i18n"
 import type {
   Account,
   AccountStatus,
@@ -101,14 +106,14 @@ interface Store {
   startStudioBlank: () => void
   generateCopy: () => void
   generateImage: () => void
-  generateVariants: () => void
+  generateVariants: () => Promise<void>
   startManualVariants: () => void
   updateVariant: (platform: Platform, patch: Partial<PostVariant>) => void
   setStudioPlatforms: (p: Platform[]) => void
   setStudioTopic: (t: string) => void
 
   posts: SocialPost[]
-  saveStudioToLibrary: () => SocialPost | null
+  saveStudioToLibrary: () => Promise<SocialPost | null>
   markManuallyPublished: (postId: string) => void
   retryFailed: (postId: string) => void
   archivePost: (postId: string) => void
@@ -215,6 +220,51 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   }, [])
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), [])
 
+  // 挂载时从后端加载真实数据（前后端数据库打通）。后端不可用则保留 mock，UI 仍可看。
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { workspace: ws } = await api.getWorkspace()
+        if (!ws || cancelled) return
+        const { projects: projs } = await api.getProjects()
+        const activeId = ws.activeProjectId ?? projs[0]?.id ?? null
+        const activeProj = projs.find((p) => p.id === activeId) ?? projs[0]
+        const [accsRes, bpRes, postsRes, calRes] = await Promise.all([
+          api.getAccounts(),
+          activeId ? api.getBrandProfile(activeId) : Promise.resolve({ brandProfile: null }),
+          activeId ? api.getPosts(activeId) : Promise.resolve({ posts: [] as SocialPost[] }),
+          activeId ? api.getCalendar(activeId) : Promise.resolve({ calendar: [] as CalendarItem[] }),
+        ])
+        if (cancelled) return
+        setWorkspace({
+          ...initialWorkspace,
+          id: ws.id,
+          name: ws.name,
+          timezone: ws.timezone,
+          brandName: activeProj?.brandName ?? initialWorkspace.brandName,
+          description: activeProj?.description ?? "",
+          targetMarket: activeProj?.targetMarket ?? "US",
+          platforms: activeProj?.platforms ?? [],
+          primaryGoal: (activeProj?.primaryGoal as ContentGoal) ?? "Grow awareness",
+          websiteUrl: activeProj?.websiteUrl,
+          tone: activeProj?.tone,
+        })
+        setProjects(projs.map((p) => ({ id: p.id, brandName: p.brandName, description: p.description, targetMarket: p.targetMarket, platforms: p.platforms, primaryGoal: p.primaryGoal as ContentGoal, websiteUrl: p.websiteUrl, tone: p.tone })))
+        setActiveProjectId(activeId)
+        if (bpRes.brandProfile) setProfile(bpRes.brandProfile)
+        setAccounts(accsRes.accounts)
+        setPosts(postsRes.posts)
+        setCalendar(calRes.calendar)
+      } catch (e) {
+        console.warn("[store] 后端加载失败，回退本地 mock：", (e as Error).message)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const goToAgent = useCallback(() => {
     setView("agent")
     setAgentTab("Home")
@@ -259,7 +309,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       }))
       setView("agent")
       setAgentTab("Home")
-      pushToast("Workspace created", "success")
+      pushToast(translate("Workspace created", "已创建工作区"), "success")
     },
     [pushToast],
   )
@@ -299,7 +349,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       applyProjectToState(proj)
       setView("agent")
       setAgentTab("Home")
-      pushToast(`Project "${proj.brandName}" created`, "success")
+      pushToast(translate(`Project "${proj.brandName}" created`, `已创建项目"${proj.brandName}"`), "success")
     },
     [applyProjectToState, pushToast],
   )
@@ -310,7 +360,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       if (!proj) return
       setActiveProjectId(id)
       applyProjectToState(proj)
-      pushToast(`Switched to ${proj.brandName}`, "default")
+      pushToast(translate(`Switched to ${proj.brandName}`, `已切换到 ${proj.brandName}`), "default")
     },
     [projects, applyProjectToState, pushToast],
   )
@@ -352,7 +402,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       visualStyle: p.visualStyle || "Clean, modern, high-contrast product shots",
       brandColors: p.brandColors || "#7C5CFC, #111111, #F5F5F5",
     }))
-    pushToast("Profile draft generated. Actual credits: 11", "success")
+    pushToast(translate("Profile draft generated. Actual credits: 11", "已生成品牌档案草稿。实际 credits：11"), "success")
   }, [pushToast])
 
   const generatePlan = useCallback(() => {
@@ -364,7 +414,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         status: "Planned" as const,
       })),
     )
-    pushToast("7-day plan generated. Actual credits: 22", "success")
+    pushToast(translate("7-day plan generated. Actual credits: 22", "已生成 7 天计划。实际 credits：22"), "success")
   }, [pushToast])
 
   const startStudioFromPlan = useCallback((item: PlanItem) => {
@@ -400,27 +450,35 @@ export function SocialProvider({ children }: { children: ReactNode }) {
           ? s.variants
           : s.platforms.map((p) => buildVariant(p, s.topic || "New social topic", profile)),
     }))
-    pushToast("Copy generated. Actual credits: 7", "success")
+    pushToast(translate("Copy generated. Actual credits: 7", "已生成文案。实际 credits：7"), "success")
   }, [profile, pushToast])
 
   const generateImage = useCallback(() => {
     setCredits((c) => c - 30)
     setStudio((s) => ({ ...s, imageGenerated: true }))
-    pushToast("Image generated. Actual credits: 28", "success")
+    pushToast(translate("Image generated. Actual credits: 28", "已生成图片。实际 credits：28"), "success")
   }, [pushToast])
 
-  const generateVariants = useCallback(() => {
-    setCredits((c) => c - 16)
-    setStudio((s) => ({
-      ...s,
-      copyGenerated: true,
-      variants: s.platforms.map((p) => {
-        const existing = s.variants.find((v) => v.platform === p)
-        return existing || buildVariant(p, s.topic || "New social topic", profile)
-      }),
-    }))
-    pushToast("Variants generated · Actual credits: 15", "success")
-  }, [profile, pushToast])
+  // 走后端真实 AI（gpt-5.3-chat）：品牌上下文 + 主题 + 平台 → 每平台定制变体。
+  const generateVariants = useCallback(async () => {
+    if (!activeProjectId) {
+      pushToast(translate("Select a project first", "请先选择项目"), "warn")
+      return
+    }
+    try {
+      const res = await api.generateVariants({
+        projectId: activeProjectId,
+        topic: studio.topic || "New social topic",
+        platforms: studio.platforms,
+      })
+      setStudio((s) => ({ ...s, copyGenerated: true, variants: res.variants }))
+      setCredits((c) => c - res.credits)
+      pushToast(translate(`Variants generated (AI) · credits: ${res.credits}`, `已生成内容变体（AI）· credits：${res.credits}`), "success")
+    } catch (e) {
+      pushToast(translate(`Generation failed: ${(e as Error).message}`, `生成失败：${(e as Error).message}`), "warn")
+      throw e
+    }
+  }, [activeProjectId, studio.topic, studio.platforms, pushToast])
 
   const startManualVariants = useCallback(() => {
     setStudio((s) => ({
@@ -452,34 +510,33 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
   const setStudioTopic = useCallback((t: string) => setStudio((s) => ({ ...s, topic: t })), [])
 
-  const saveStudioToLibrary = useCallback((): SocialPost | null => {
-    let saved: SocialPost | null = null
-    setStudio((s) => {
-      if (!s.topic && s.variants.length === 0) return s
-      const post: SocialPost = {
-        id: nextId("post"),
-        title: s.topic || "Untitled topic",
-        platforms: s.platforms,
-        assetType: s.imageGenerated ? "Copy + image" : "Copy",
-        status: "Ready",
-        tags: ["studio"],
-        updatedAt: "Just now",
-        owner: "L",
-        hasImage: s.imageGenerated,
-        variants:
-          s.variants.length > 0
-            ? s.variants
-            : s.platforms.map((p) => buildVariant(p, s.topic, profile)),
-      }
-      saved = post
-      return s
-    })
-    if (saved) {
-      setPosts((prev) => [saved as SocialPost, ...prev])
-      pushToast("Saved to Content Library", "success")
+  // 存到库走后端持久化（落 ssa_post + variants），返回后端真实 post。
+  const saveStudioToLibrary = useCallback(async (): Promise<SocialPost | null> => {
+    if (!studio.topic && studio.variants.length === 0) return null
+    if (!activeProjectId) {
+      pushToast(translate("Select a project first", "请先选择项目"), "warn")
+      return null
     }
-    return saved
-  }, [profile, pushToast])
+    const variants =
+      studio.variants.length > 0 ? studio.variants : studio.platforms.map((p) => buildVariant(p, studio.topic, profile))
+    try {
+      const { post } = await api.savePost({
+        projectId: activeProjectId,
+        title: studio.topic || "Untitled topic",
+        platforms: studio.platforms,
+        assetType: studio.imageGenerated ? "Copy + image" : "Copy",
+        status: "Ready",
+        hasImage: studio.imageGenerated,
+        variants,
+      })
+      setPosts((prev) => [post, ...prev])
+      pushToast(translate("Saved to Content Library", "已保存到内容库"), "success")
+      return post
+    } catch (e) {
+      pushToast(translate(`Save failed: ${(e as Error).message}`, `保存失败：${(e as Error).message}`), "warn")
+      return null
+    }
+  }, [activeProjectId, studio.topic, studio.platforms, studio.variants, studio.imageGenerated, profile, pushToast])
 
   const addStudioToCalendar = useCallback(
     (date = "Wed Jul 8", time = "09:00") => {
@@ -504,7 +561,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         setCalendar((prev) => [...prev, item])
         return s
       })
-      pushToast("Added to calendar", "success")
+      pushToast(translate("Added to calendar", "已加入日历"), "success")
     },
     [profile, pushToast],
   )
@@ -528,7 +585,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       }
       setCalendar((prev) => [...prev, calItem])
       setPlan((prev) => prev.map((pi) => (pi.id === item.id ? { ...pi, status: "Scheduled" } : pi)))
-      pushToast("Added to calendar", "success")
+      pushToast(translate("Added to calendar", "已加入日历"), "success")
     },
     [pushToast],
   )
@@ -540,7 +597,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
           c.id === id ? { ...c, date, time, variants: c.variants.map((v) => ({ ...v, time })) } : c,
         ),
       )
-      pushToast("Job rescheduled", "success")
+      pushToast(translate("Job rescheduled", "任务已重新排期"), "success")
     },
     [pushToast],
   )
@@ -554,7 +611,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
             : c,
         ),
       )
-      pushToast("Job cancelled", "default")
+      pushToast(translate("Job cancelled", "任务已取消"), "default")
     },
     [pushToast],
   )
@@ -574,7 +631,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
             : c,
         ),
       )
-      pushToast("Auto platforms published now", "success")
+      pushToast(translate("Auto platforms published now", "自动平台已立即发布"), "success")
     },
     [pushToast],
   )
@@ -597,7 +654,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
             : c,
         ),
       )
-      pushToast("Converted to manual fallback", "default")
+      pushToast(translate("Converted to manual fallback", "已转为手动发布"), "default")
     },
     [pushToast],
   )
@@ -628,7 +685,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         })),
       }
       setCalendar((prev) => [...prev.filter((c) => c.postId !== post.id), calItem])
-      pushToast("Publish jobs confirmed", "success")
+      pushToast(translate("Publish jobs confirmed", "发布任务已确认"), "success")
     },
     [pushToast],
   )
@@ -650,7 +707,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
           : c,
       ),
     )
-    pushToast("Marked as manually published", "success")
+    pushToast(translate("Marked as manually published", "已标记为手动发布"), "success")
   }, [])
 
   const retryFailed = useCallback((postId: string) => {
@@ -666,12 +723,12 @@ export function SocialProvider({ children }: { children: ReactNode }) {
           : c,
       ),
     )
-    pushToast("Retry scheduled", "success")
+    pushToast(translate("Retry scheduled", "已安排重试"), "success")
   }, [])
 
   const archivePost = useCallback((postId: string) => {
     setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, status: "Archived" } : p)))
-    pushToast("Archived", "default")
+    pushToast(translate("Archived", "已归档"), "default")
   }, [])
 
   const addManualAccount = useCallback(
@@ -680,7 +737,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         ...prev,
         { ...a, id: nextId("acc"), type: "manual", status: "UnsupportedPublishing" },
       ])
-      pushToast("Manual account added", "success")
+      pushToast(translate("Manual account added", "已添加手动账号"), "success")
     },
     [pushToast],
   )
@@ -694,7 +751,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
             : a,
         ),
       )
-      pushToast(`${platform} connected`, "success")
+      pushToast(translate(`${platform} connected`, `已连接 ${platform}`), "success")
     },
     [pushToast],
   )
@@ -708,7 +765,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
             : a,
         ),
       )
-      pushToast("Account disconnected", "default")
+      pushToast(translate("Account disconnected", "已断开账号"), "default")
     },
     [pushToast],
   )
@@ -716,7 +773,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   const refreshAccount = useCallback(
     (id: string) => {
       setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a } : a)))
-      pushToast("Status refreshed", "default")
+      pushToast(translate("Status refreshed", "已刷新状态"), "default")
     },
     [pushToast],
   )
@@ -725,7 +782,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     setCredits((c) => c - 18)
     setSuggestions(opsRecommendations)
     setSuggestionsGenerated(true)
-    pushToast("Recommendations generated. Actual credits: 16", "success")
+    pushToast(translate("Recommendations generated. Actual credits: 16", "已生成运营建议。实际 credits：16"), "success")
   }, [pushToast])
 
   const value = useMemo<Store>(

@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { CreditsPill, Modal, PlatformBadge } from "@/features/social/components/ui"
+import { useLang } from "@/features/social/i18n"
 import type { PostVariant } from "@social/shared"
 import { CircleCheck, TriangleAlert } from "lucide-react"
 
@@ -18,6 +19,7 @@ export function BatchPublishModal({
   variants: PostVariant[]
   onConfirm: () => void
 }) {
+  const { t } = useLang()
   const autoCount = variants.filter((v) => v.publishMode === "auto").length
   const manualCount = variants.length - autoCount
 
@@ -26,19 +28,19 @@ export function BatchPublishModal({
       open={open}
       onClose={onClose}
       wide
-      title="Confirm publishing"
-      description={`${topic} · ${variants.length} platform${variants.length === 1 ? "" : "s"}`}
+      title={t("Confirm publishing", "确认发布")}
+      description={`${topic} · ${t(`${variants.length} platform${variants.length === 1 ? "" : "s"}`, `${variants.length} 个平台`)}`}
       footer={
         <>
           <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
             <CreditsPill credits={12} />
-            <span>Provider cost applies per auto publish</span>
+            <span>{t("Provider cost applies per auto publish", "每次自动发布按服务商成本计费")}</span>
           </div>
           <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
+            {t("Cancel", "取消")}
           </Button>
           <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={onConfirm}>
-            Confirm schedule
+            {t("Confirm schedule", "确认排期")}
           </Button>
         </>
       }

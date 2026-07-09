@@ -1,6 +1,8 @@
 "use client"
 
 import { useSocial, type AgentTab } from "@/features/social/store"
+import { useLang } from "@/features/social/i18n"
+import { NAV_LABELS } from "@/features/social/i18n/labels"
 import { cn } from "@/lib/utils"
 import { Onboarding } from "@/features/social/onboarding"
 import { AgentHome } from "@/features/social/views/home"
@@ -25,6 +27,7 @@ export function Workbench() {
     setCreateIntent,
     credits,
   } = useSocial()
+  const { t, te } = useLang()
 
   if (!hasWorkspace || !workspace) return <Onboarding />
 
@@ -59,13 +62,13 @@ export function Workbench() {
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-              Est. credits: <span className="text-foreground">{credits}</span>
+              {t("Est. credits:", "预计积分：")} <span className="text-foreground">{credits}</span>
             </span>
             <Button size="sm" variant="outline" onClick={() => openCreate("plan")}>
-              <Sparkles className="size-3.5" /> Create 7-day plan
+              <Sparkles className="size-3.5" /> {t("Create 7-day plan", "生成 7 天计划")}
             </Button>
             <Button size="sm" onClick={() => openCreate("post")} className="bg-brand text-brand-foreground hover:bg-brand/90">
-              <Plus className="size-3.5" /> Create content
+              <Plus className="size-3.5" /> {t("Create content", "创建内容")}
             </Button>
           </div>
         </div>
@@ -81,7 +84,7 @@ export function Workbench() {
                 agentTab === t && !agentSecondary ? "text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {t}
+              {te(NAV_LABELS[t])}
               {agentTab === t && !agentSecondary ? (
                 <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand" />
               ) : null}
@@ -107,17 +110,25 @@ export function Workbench() {
 }
 
 function SecondaryPage({ view, onBack }: { view: "brand" | "accounts"; onBack: () => void }) {
-  const title = view === "brand" ? "Brand profile" : "Third-party connections"
+  const { t } = useLang()
+  const title =
+    view === "brand" ? t("Brand profile", "品牌资料") : t("Third-party connections", "第三方连接")
   const subtitle =
     view === "brand"
-      ? "Complete your brand context so plans, copy, and images stay on-brand."
-      : "Connect platforms for auto publishing, or add manual accounts for export-only workflows."
+      ? t(
+          "Complete your brand context so plans, copy, and images stay on-brand.",
+          "完善品牌信息，让计划、文案与图片始终贴合品牌调性。",
+        )
+      : t(
+          "Connect platforms for auto publishing, or add manual accounts for export-only workflows.",
+          "连接平台以自动发布，或添加手动账号用于仅导出的流程。",
+        )
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-6">
       <div className="flex items-center gap-3">
         <Button size="sm" variant="outline" onClick={onBack}>
-          <ArrowLeft className="size-4" /> Back
+          <ArrowLeft className="size-4" /> {t("Back", "返回")}
         </Button>
         <div>
           <h2 className="text-lg font-semibold text-foreground">{title}</h2>

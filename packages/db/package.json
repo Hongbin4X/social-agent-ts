@@ -1,0 +1,32 @@
+{
+  "name": "@social/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "持久化层：Drizzle schema（MySQL）+ 连接工厂 + 仓储端口与适配器。领域数据独立库，userId 逻辑引用 GLBGPT platform_user，不跨库外键。",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/migrate.ts",
+    "db:seed": "tsx src/seed.ts",
+    "db:seed:brands": "tsx src/seed-brands.ts",
+    "lint": "echo \"(db) no lint yet\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@social/shared": "workspace:*",
+    "drizzle-orm": "^0.38.3",
+    "mysql2": "^3.11.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "drizzle-kit": "^0.30.1",
+    "tsx": "^4.19.2",
+    "typescript": "5.7.3"
+  }
+}

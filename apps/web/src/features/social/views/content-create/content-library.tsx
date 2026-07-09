@@ -6,6 +6,8 @@ import { type PostStatus, type SocialPost } from "@social/shared"
 import { Button } from "@/components/ui/button"
 import { Card, PlatformBadge, StatusBadge } from "@/features/social/components/ui"
 import { BatchPublishModal } from "@/features/social/components/batch-publish"
+import { useLang } from "@/features/social/i18n"
+import { STATUS_LABELS } from "@/features/social/i18n/labels"
 import { cn } from "@/lib/utils"
 import { Archive, CheckSquare, CircleCheck, ListFilter, RefreshCw, Send, Square } from "lucide-react"
 
@@ -21,6 +23,7 @@ const FILTERS: { label: string; value: PostStatus | "All" }[] = [
 
 export function ContentLibrary() {
   const { posts, markManuallyPublished, retryFailed, archivePost, schedulePost } = useSocial()
+  const { t, te } = useLang()
   const [filter, setFilter] = useState<PostStatus | "All">("All")
   const [selected, setSelected] = useState<string[]>([])
   const [batchOpen, setBatchOpen] = useState(false)
@@ -36,12 +39,12 @@ export function ContentLibrary() {
     <Card className="p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Content Library</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Every generated post and its per-platform publish state.</p>
+          <h3 className="text-sm font-semibold text-foreground">{t("Content Library", "内容库")}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">{t("Every generated post and its per-platform publish state.", "每一条生成的帖子及其在各平台的发布状态。")}</p>
         </div>
         <Button onClick={() => setBatchOpen(true)} disabled={selected.length === 0} size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90">
           <Send className="size-4" />
-          Batch publish{selected.length > 0 ? ` (${selected.length})` : ""}
+          {t("Batch publish", "批量发布")}{selected.length > 0 ? ` (${selected.length})` : ""}
         </Button>
       </div>
 
@@ -56,14 +59,14 @@ export function ContentLibrary() {
               filter === f.value ? "bg-foreground text-background" : "border border-border bg-background text-muted-foreground hover:bg-muted",
             )}
           >
-            {f.label}
+            {f.value === "All" ? t("All", "全部") : te(STATUS_LABELS[f.value])}
           </button>
         ))}
       </div>
 
       <div className="mt-4 flex flex-col gap-3">
         {visible.length === 0 ? (
-          <div className="rounded-md border border-border px-5 py-12 text-center text-sm text-muted-foreground">No posts in this view.</div>
+          <div className="rounded-md border border-border px-5 py-12 text-center text-sm text-muted-foreground">{t("No posts in this view.", "该视图下暂无帖子。")}</div>
         ) : (
           visible.map((post) => (
             <LibraryRow

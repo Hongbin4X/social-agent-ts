@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSocial } from "@/features/social/store"
+import { useLang } from "@/features/social/i18n"
 import { cn } from "@/lib/utils"
 import { ArrowRight, CalendarRange, PencilLine } from "lucide-react"
 import { CreatePostWizard } from "./create-content-wizard"
@@ -10,6 +11,7 @@ import { ContentLibrary } from "./content-library"
 
 export function ContentCreateTab() {
   const { createIntent, setCreateIntent, startStudioBlank, startStudioFromPlan } = useSocial()
+  const { t } = useLang()
   const [createOpen, setCreateOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
 
@@ -27,9 +29,12 @@ export function ContentCreateTab() {
   return (
     <div className="mx-auto max-w-5xl space-y-5 p-6">
       <div>
-        <h2 className="text-lg font-semibold text-foreground">Content Create</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t("Content Create", "内容创作")}</h2>
         <p className="text-sm text-muted-foreground">
-          Start a guided compose flow or generate a full week of on-brand topics. Everything you produce lands in your library below.
+          {t(
+            "Start a guided compose flow or generate a full week of on-brand topics. Everything you produce lands in your library below.",
+            "开启引导式创作流程，或一键生成契合品牌调性的一周选题。你产出的所有内容都会归入下方的内容库。",
+          )}
         </p>
       </div>
 
@@ -37,9 +42,12 @@ export function ContentCreateTab() {
       <div className="grid gap-4 sm:grid-cols-2">
         <BigActionCard
           icon={PencilLine}
-          title="Create content"
-          description="Compose a post, customize it for each network, then schedule or publish — step by step."
-          cta="Start composing"
+          title={t("Create content", "创作内容")}
+          description={t(
+            "Compose a post, customize it for each network, then schedule or publish — step by step.",
+            "撰写一条帖子，为每个平台分别定制，再逐步排期或发布。",
+          )}
+          cta={t("Start composing", "开始创作")}
           accent
           onClick={() => {
             startStudioBlank()
@@ -48,9 +56,12 @@ export function ContentCreateTab() {
         />
         <BigActionCard
           icon={CalendarRange}
-          title="Create 7-day plan"
-          description="Generate a week of topics from your brand profile, then open any topic in the composer."
-          cta="Generate plan"
+          title={t("Create 7-day plan", "生成 7 天计划")}
+          description={t(
+            "Generate a week of topics from your brand profile, then open any topic in the composer.",
+            "根据品牌资料生成一周选题，再在创作台中打开任意选题。",
+          )}
+          cta={t("Generate plan", "生成计划")}
           onClick={() => setPlanOpen(true)}
         />
       </div>

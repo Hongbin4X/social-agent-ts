@@ -29,6 +29,8 @@ import {
   TriangleAlert,
   UserCog,
 } from "lucide-react"
+import { useLang } from "@/features/social/i18n"
+import { CONTENT_GOAL_LABELS } from "@/features/social/i18n/labels"
 
 export function AgentHome() {
   const {
@@ -46,6 +48,7 @@ export function AgentHome() {
     setAgentSecondary,
     setCreateIntent,
   } = useSocial()
+  const { t, te } = useLang()
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const switcherRef = useRef<HTMLDivElement>(null)
@@ -84,25 +87,25 @@ export function AgentHome() {
 
   const attention: { text: string; tone: string; action: string; onClick: () => void }[] = []
   if (failed > 0)
-    attention.push({ text: `${failed} failed publish job${failed > 1 ? "s" : ""}`, tone: "text-status-failed", action: "Review in calendar", onClick: () => setAgentTab("Calendar") })
+    attention.push({ text: t(`${failed} failed publish job${failed > 1 ? "s" : ""}`, `${failed} 个发布任务失败`), tone: "text-status-failed", action: t("Review in calendar", "在日历中查看"), onClick: () => setAgentTab("Calendar") })
   if (fallback > 0)
-    attention.push({ text: `${fallback} manual fallback${fallback > 1 ? "s" : ""} awaiting action`, tone: "text-[oklch(0.48_0.13_55)]", action: "Open calendar", onClick: () => setAgentTab("Calendar") })
+    attention.push({ text: t(`${fallback} manual fallback${fallback > 1 ? "s" : ""} awaiting action`, `${fallback} 个转手动任务待处理`), tone: "text-[oklch(0.48_0.13_55)]", action: t("Open calendar", "打开日历"), onClick: () => setAgentTab("Calendar") })
   expired.forEach((a) =>
-    attention.push({ text: `${a.platform} token expired`, tone: "text-status-failed", action: "Reconnect", onClick: () => setAgentSecondary("accounts") }),
+    attention.push({ text: t(`${a.platform} token expired`, `${a.platform} 令牌已过期`), tone: "text-status-failed", action: t("Reconnect", "重新连接"), onClick: () => setAgentSecondary("accounts") }),
   )
   permission.forEach((a) =>
-    attention.push({ text: `${a.platform} permission missing`, tone: "text-[oklch(0.48_0.13_55)]", action: "Fix", onClick: () => setAgentSecondary("accounts") }),
+    attention.push({ text: t(`${a.platform} permission missing`, `${a.platform} 权限缺失`), tone: "text-[oklch(0.48_0.13_55)]", action: t("Fix", "修复"), onClick: () => setAgentSecondary("accounts") }),
   )
   if (pct < 100)
-    attention.push({ text: `Brand profile ${pct}% complete`, tone: "text-muted-foreground", action: "Complete", onClick: () => setAgentSecondary("brand") })
+    attention.push({ text: t(`Brand profile ${pct}% complete`, `品牌资料完成度 ${pct}%`), tone: "text-muted-foreground", action: t("Complete", "完善"), onClick: () => setAgentSecondary("brand") })
 
   const quickActions = [
-    { label: "Create 7-day plan", icon: Sparkles, onClick: () => { setAgentTab("Content Create"); setCreateIntent("plan") } },
-    { label: "Create social content", icon: FileEdit, onClick: () => { setAgentTab("Content Create"); setCreateIntent("post") } },
-    { label: "View calendar", icon: CalendarDays, onClick: () => setAgentTab("Calendar") },
-    { label: "Operations data", icon: BarChart3, onClick: () => setAgentTab("Operations Data") },
-    { label: "Complete brand profile", icon: UserCog, onClick: () => setAgentSecondary("brand") },
-    { label: "Connect account", icon: Plug, onClick: () => setAgentSecondary("accounts") },
+    { label: t("Create 7-day plan", "生成 7 天计划"), icon: Sparkles, onClick: () => { setAgentTab("Content Create"); setCreateIntent("plan") } },
+    { label: t("Create social content", "创作社交内容"), icon: FileEdit, onClick: () => { setAgentTab("Content Create"); setCreateIntent("post") } },
+    { label: t("View calendar", "查看日历"), icon: CalendarDays, onClick: () => setAgentTab("Calendar") },
+    { label: t("Operations data", "运营数据"), icon: BarChart3, onClick: () => setAgentTab("Operations Data") },
+    { label: t("Complete brand profile", "完善品牌资料"), icon: UserCog, onClick: () => setAgentSecondary("brand") },
+    { label: t("Connect account", "连接账号"), icon: Plug, onClick: () => setAgentSecondary("accounts") },
   ]
 
   return (
@@ -126,7 +129,7 @@ export function AgentHome() {
                 </button>
                 {switcherOpen ? (
                   <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-md border border-border bg-card p-1 shadow-md">
-                    <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Projects / brands</p>
+                    <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("Projects / brands", "项目 / 品牌")}</p>
                     {projects.map((p) => (
                       <button
                         key={p.id}
@@ -148,17 +151,17 @@ export function AgentHome() {
                       }}
                       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-brand hover:bg-brand-muted"
                     >
-                      <Plus className="size-4" /> New project
+                      <Plus className="size-4" /> {t("New project", "新建项目")}
                     </button>
                   </div>
                 ) : null}
               </div>
-              <span className="rounded-full bg-brand-muted px-2 py-0.5 text-xs font-medium text-brand">{workspace.primaryGoal}</span>
+              <span className="rounded-full bg-brand-muted px-2 py-0.5 text-xs font-medium text-brand">{te(CONTENT_GOAL_LABELS[workspace.primaryGoal])}</span>
               <button
                 onClick={() => setNewProjectOpen(true)}
                 className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
               >
-                <Plus className="size-3.5" /> New project
+                <Plus className="size-3.5" /> {t("New project", "新建项目")}
               </button>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -177,7 +180,7 @@ export function AgentHome() {
             }}
             className="bg-brand text-brand-foreground hover:bg-brand/90"
           >
-            <FileEdit className="size-4" /> Create content
+            <FileEdit className="size-4" /> {t("Create content", "创作内容")}
           </Button>
         </div>
       </Card>
@@ -190,12 +193,12 @@ export function AgentHome() {
               <UserCog className="size-5" />
             </span>
             <div>
-              <p className="text-sm text-muted-foreground">Brand profile</p>
+              <p className="text-sm text-muted-foreground">{t("Brand profile", "品牌资料")}</p>
               <p className="text-3xl font-bold leading-tight text-foreground">{pct}%</p>
             </div>
           </div>
           <Button size="sm" variant="outline" onClick={() => setAgentSecondary("brand")}>
-            {pct < 100 ? "Complete" : "Open"}
+            {pct < 100 ? t("Complete", "完善") : t("Open", "打开")}
           </Button>
         </Card>
         <Card className="flex items-center justify-between gap-3 p-5">
@@ -205,9 +208,9 @@ export function AgentHome() {
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm text-muted-foreground">Connections</p>
+                <p className="text-sm text-muted-foreground">{t("Connections", "账号连接")}</p>
                 {issues > 0 ? (
-                  <span className="h-1.5 w-1.5 rounded-full bg-status-failed" aria-label={`${issues} issues`} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-status-failed" aria-label={t(`${issues} issues`, `${issues} 个问题`)} />
                 ) : null}
               </div>
               <p className="text-3xl font-bold leading-tight text-foreground">
@@ -217,20 +220,20 @@ export function AgentHome() {
             </div>
           </div>
           <Button size="sm" variant="outline" onClick={() => setAgentSecondary("accounts")}>
-            Manage
+            {t("Manage", "管理")}
           </Button>
         </Card>
       </div>
 
       {/* status summary — 7 metrics */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
-        <Stat label="Drafts" value={drafts} />
-        <Stat label="Planned" value={planned} />
-        <Stat label="Scheduled" value={scheduled} tone="text-status-scheduled" />
-        <Stat label="Published" value={published} tone="text-status-published" />
-        <Stat label="Manual fallback" value={fallback} tone="text-[oklch(0.48_0.13_55)]" />
-        <Stat label="Failed" value={failed} tone="text-status-failed" />
-        <Stat label="Est. credits" value={credits} tone="text-brand" />
+        <Stat label={t("Drafts", "草稿")} value={drafts} />
+        <Stat label={t("Planned", "已计划")} value={planned} />
+        <Stat label={t("Scheduled", "已排期")} value={scheduled} tone="text-status-scheduled" />
+        <Stat label={t("Published", "已发布")} value={published} tone="text-status-published" />
+        <Stat label={t("Manual fallback", "转手动")} value={fallback} tone="text-[oklch(0.48_0.13_55)]" />
+        <Stat label={t("Failed", "失败")} value={failed} tone="text-status-failed" />
+        <Stat label={t("Est. credits", "预估积分")} value={credits} tone="text-brand" />
       </div>
 
       {/* needs attention */}
@@ -238,7 +241,7 @@ export function AgentHome() {
         <Card className="border-status-fallback/30 bg-[oklch(0.98_0.02_70)] p-4">
           <div className="flex items-center gap-1.5">
             <TriangleAlert className="size-4 text-status-fallback" />
-            <span className="text-sm font-semibold text-foreground">Needs attention</span>
+            <span className="text-sm font-semibold text-foreground">{t("Needs attention", "需要关注")}</span>
             <span className="text-xs text-muted-foreground">({attention.length})</span>
           </div>
           <div className="mt-3 flex flex-col gap-2">
@@ -257,10 +260,10 @@ export function AgentHome() {
       {/* recent lists */}
       <div className="grid gap-5 lg:grid-cols-3">
         <Card className="p-5">
-          <SectionTitle hint="Editable">Recent drafts</SectionTitle>
+          <SectionTitle hint={t("Editable", "可编辑")}>{t("Recent drafts", "最近草稿")}</SectionTitle>
           <div className="mt-3 space-y-2">
             {recentDrafts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No drafts yet.</p>
+              <p className="text-sm text-muted-foreground">{t("No drafts yet.", "暂无草稿。")}</p>
             ) : (
               recentDrafts.map((d) => (
                 <button
@@ -277,10 +280,10 @@ export function AgentHome() {
         </Card>
 
         <Card className="p-5">
-          <SectionTitle hint="Next up">Upcoming posts</SectionTitle>
+          <SectionTitle hint={t("Next up", "接下来")}>{t("Upcoming posts", "即将发布的帖子")}</SectionTitle>
           <div className="mt-3 space-y-2">
             {upcoming.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nothing scheduled.</p>
+              <p className="text-sm text-muted-foreground">{t("Nothing scheduled.", "暂无排期。")}</p>
             ) : (
               upcoming.map((c) => (
                 <button
@@ -307,10 +310,10 @@ export function AgentHome() {
         </Card>
 
         <Card className="p-5">
-          <SectionTitle hint="Latest">Recent publish results</SectionTitle>
+          <SectionTitle hint={t("Latest", "最新")}>{t("Recent publish results", "最近发布结果")}</SectionTitle>
           <div className="mt-3 space-y-2">
             {recentResults.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No results yet.</p>
+              <p className="text-sm text-muted-foreground">{t("No results yet.", "暂无结果。")}</p>
             ) : (
               recentResults.map((p) => (
                 <div key={p.id} className="rounded-md border border-border px-3 py-2">
@@ -318,7 +321,7 @@ export function AgentHome() {
                     <span className="min-w-0 truncate text-sm text-foreground">{p.title}</span>
                     <StatusBadge status={p.status} />
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">Updated {p.updatedAt}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{t("Updated", "更新于")} {p.updatedAt}</div>
                 </div>
               ))
             )}
@@ -328,7 +331,7 @@ export function AgentHome() {
 
       {/* quick actions */}
       <Card className="p-5">
-        <SectionTitle>Quick actions</SectionTitle>
+        <SectionTitle>{t("Quick actions", "快捷操作")}</SectionTitle>
         <div className="mt-3 flex flex-wrap gap-2">
           {quickActions.map((a) => (
             <Button key={a.label} variant="outline" size="sm" onClick={a.onClick}>
@@ -337,7 +340,10 @@ export function AgentHome() {
           ))}
         </div>
         <p className="mt-4 text-xs text-muted-foreground">
-          Credits are metered per generation. Estimated credits are shown before every paid action.
+          {t(
+            "Credits are metered per generation. Estimated credits are shown before every paid action.",
+            "积分按每次生成计费。每次付费操作前都会显示预估积分。",
+          )}
         </p>
       </Card>
 
@@ -348,6 +354,7 @@ export function AgentHome() {
 
 function NewProjectModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { createProject } = useSocial()
+  const { t } = useLang()
   const [brand, setBrand] = useState("")
   const [desc, setDesc] = useState("")
   const [market, setMarket] = useState("US")
@@ -378,13 +385,16 @@ function NewProjectModal({ open, onClose }: { open: boolean; onClose: () => void
     <Modal
       open={open}
       onClose={onClose}
-      title="Create a new project"
-      description="Add another brand or project to this workspace. You can switch between them anytime."
+      title={t("Create a new project", "新建项目")}
+      description={t(
+        "Add another brand or project to this workspace. You can switch between them anytime.",
+        "为该工作区添加另一个品牌或项目，可随时切换。",
+      )}
       wide
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
+            {t("Cancel", "取消")}
           </Button>
           <Button
             size="sm"
@@ -392,7 +402,7 @@ function NewProjectModal({ open, onClose }: { open: boolean; onClose: () => void
             onClick={handleCreate}
             className="bg-brand text-brand-foreground hover:bg-brand/90"
           >
-            Create project
+            {t("Create project", "创建项目")}
           </Button>
         </>
       }

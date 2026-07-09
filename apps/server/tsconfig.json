@@ -8,7 +8,10 @@
     "types": ["node"],
     "paths": {
       "@social/shared": ["../../packages/shared/src/index.ts"],
-      "@social/publisher": ["../../packages/publisher/src/index.ts"]
+      "@social/publisher": ["../../packages/publisher/src/index.ts"],
+      "@social/agent": ["../../packages/agent/src/index.ts"],
+      "@social/db": ["../../packages/db/src/index.ts"],
+      "@social/storage": ["../../packages/storage/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts"]

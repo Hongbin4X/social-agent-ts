@@ -105,15 +105,16 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
     updateVariant(current.platform, { ...patch, publishMode: deriveMode(merged), state: deriveState(merged) })
   }
 
-  const runGenerateVariants = () => {
+  const runGenerateVariants = async () => {
     setShowVariantsConfirm(false)
     setGenerating(true)
     setStep(1)
-    window.setTimeout(() => {
-      generateVariants()
-      setGenerating(false)
+    try {
+      await generateVariants()
       setActiveVariant(studio.platforms[0] ?? null)
-    }, 900)
+    } finally {
+      setGenerating(false)
+    }
   }
 
   const goToCustomize = () => {
@@ -491,8 +492,8 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    saveStudioToLibrary()
+                  onClick={async () => {
+                    await saveStudioToLibrary()
                     onClose()
                   }}
                 >
@@ -656,8 +657,8 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
         onClose={() => setShowBatch(false)}
         topic={studio.topic || "Untitled topic"}
         variants={variants}
-        onConfirm={() => {
-          const post = saveStudioToLibrary()
+        onConfirm={async () => {
+          const post = await saveStudioToLibrary()
           if (post) schedulePost(post)
           setShowBatch(false)
           onClose()

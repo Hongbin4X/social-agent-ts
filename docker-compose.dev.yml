@@ -1,0 +1,25 @@
+# 本地开发用的专用 MySQL —— 独立容器，不碰共享的 yanfa-mysql(3306)。
+# 端口错开到 3307；库名/凭证都在这里定义，连接参数由 apps 通过 .env 读取。
+# 联调远端：不用这个容器，直接把 .env 里的 DB_HOST/DB_PORT/... 指向远端 yanfa MySQL 即可。
+services:
+  social-agent-mysql:
+    image: mysql:8
+    container_name: social-agent-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: dev_root_pw
+      MYSQL_DATABASE: social_agent
+      MYSQL_USER: social_agent
+      MYSQL_PASSWORD: dev_pw
+    ports:
+      - "3307:3306"
+    volumes:
+      - social-agent-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pdev_root_pw"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  social-agent-mysql-data:

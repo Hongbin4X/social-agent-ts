@@ -9,8 +9,15 @@ import { Hono } from "hono"
 import { CREDIT_COSTS } from "@social/shared"
 import { publishRoutes } from "./routes/publish"
 import { connectionRoutes } from "./routes/connections"
+import { type AppEnv, authMiddleware } from "./auth"
+import { serverConfigFromEnv } from "./config"
+import { workspaceRoutes } from "./routes/workspace"
+import { projectRoutes } from "./routes/projects"
+import { accountRoutes } from "./routes/accounts"
+import { postRoutes } from "./routes/posts"
+import { generateRoutes } from "./routes/generate"
 
-export const app = new Hono()
+export const app = new Hono<AppEnv>()
 
 app.get("/health", (c) => c.json({ ok: true, service: "super-social-agent-server", stage: "P0-scaffold" }))
 
@@ -21,5 +28,17 @@ app.get("/api/billing/credit-costs", (c) => c.json(CREDIT_COSTS))
 app.route("/api/publish", publishRoutes)
 // 账号连接（OAuth）脚手架：暴露每平台所需权限，授权起始待联调（spec §9 Connections）。
 app.route("/api/connections", connectionRoutes)
+
+// ── 领域路由（前端全部操作的接口）。鉴权中间件解析 userId（本地走 DEV_FAKE_USER_ID）。──
+const auth = authMiddleware(serverConfigFromEnv().devFakeUserId)
+for (const base of ["/api/workspace", "/api/projects", "/api/accounts", "/api/posts", "/api/generate"]) {
+  app.use(base, auth)
+  app.use(`${base}/*`, auth)
+}
+app.route("/api/workspace", workspaceRoutes)
+app.route("/api/projects", projectRoutes)
+app.route("/api/accounts", accountRoutes)
+app.route("/api/posts", postRoutes)
+app.route("/api/generate", generateRoutes)
 
 export type AppType = typeof app
