@@ -376,6 +376,36 @@ describe("LlmContentGenerator imageSlots（image 模式解析 + 出图用 descri
     })
     expect(variants[0].imageSlots).toBeUndefined()
   })
+
+  // 归一化的防御逻辑（去重 + 过滤非法 ref）是本任务核心，单独覆盖：
+  // 重复 ref 只留首个；ref=0/负数/小数/非整数一律丢弃；存活 ref 沿用模型值不重编号。
+  it("imageSlots 归一化：重复 ref 去重、非法 ref 过滤、保留模型 ref", async () => {
+    const fetchImpl = vi.fn(async () =>
+      chatResponse({
+        hook: "h",
+        body: "b [[img:2]] [[img:3]]",
+        imageSlots: [
+          { ref: 2, description: "keep2" },
+          { ref: 2, description: "dup-dropped" },
+          { ref: 0, description: "bad-zero" },
+          { ref: -1, description: "bad-neg" },
+          { ref: 1.5, description: "bad-frac" },
+          { ref: 3, description: "keep3" },
+        ],
+      }),
+    ) as unknown as typeof fetch
+    const llm = makeLlm(fetchImpl)
+    const { variants } = await llm.generateVariants({
+      topic: "t",
+      platforms: ["Instagram"] as Platform[],
+      brand,
+      modes: ["image"],
+    })
+    expect(variants[0].imageSlots).toEqual([
+      { ref: 2, description: "keep2", ratio: "1:1", status: "empty" },
+      { ref: 3, description: "keep3", ratio: "1:1", status: "empty" },
+    ])
+  })
 })
 
 describe("buildVariantPrompt image 模式", () => {
