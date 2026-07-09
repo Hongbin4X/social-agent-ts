@@ -200,9 +200,9 @@ function InstagramFrame({ variant }: { variant: PostVariant }) {
         {/* caption：粗体用户名 + 文案 */}
         <div className="mt-2 text-sm">
           <span className="font-semibold text-foreground">{nameOf(variant.account)} </span>
-          <span className="text-foreground/90">{variant.hook || variant.body}</span>
+          <span className="text-foreground/90">{variant.hook || stripImageTokens(variant.body)}</span>
         </div>
-        {variant.hook && variant.body ? <p className="mt-1 whitespace-pre-line text-sm text-foreground/80">{variant.body}</p> : null}
+        {variant.hook && variant.body ? <p className="mt-1 whitespace-pre-line text-sm text-foreground/80">{stripImageTokens(variant.body)}</p> : null}
         <Extras variant={variant} />
       </div>
     </Card>
@@ -232,7 +232,7 @@ function YouTubeFrame({ variant }: { variant: PostVariant }) {
           <p className="mt-1 text-xs text-muted-foreground">
             {nameOf(variant.account)} · {t("1.2K views · now", "1.2K 次观看 · 刚刚")}
           </p>
-          {variant.body ? <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{variant.body}</p> : null}
+          {variant.body ? <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{stripImageTokens(variant.body)}</p> : null}
           <Extras variant={variant} />
         </div>
       </div>
@@ -258,7 +258,7 @@ function TikTokFrame({ variant }: { variant: PostVariant }) {
         {/* 底部账号 + 文案 + 音乐条 */}
         <div className="absolute inset-x-0 bottom-0 space-y-1.5 bg-gradient-to-t from-black/80 to-transparent p-3 pr-14 text-white">
           <p className="text-sm font-semibold">{handleOf(variant.account)}</p>
-          <p className="line-clamp-2 text-sm text-white/90">{variant.hook || variant.body}</p>
+          <p className="line-clamp-2 text-sm text-white/90">{variant.hook || stripImageTokens(variant.body)}</p>
           {variant.hashtags ? <p className="line-clamp-1 text-sm text-white/90">{variant.hashtags}</p> : null}
           <p className="flex items-center gap-1.5 text-xs text-white/80">
             <Music className="size-3.5" /> {nameOf(variant.account)} · original sound
@@ -284,7 +284,7 @@ function RedditFrame({ variant }: { variant: PostVariant }) {
         </div>
         {/* Reddit 有标题：hook 作大号粗体标题 */}
         <p className="mt-2 text-base font-semibold leading-snug text-foreground">{variant.hook || t("Untitled post", "未命名帖子")}</p>
-        {variant.body ? <p className="mt-1.5 whitespace-pre-line text-sm text-foreground/90">{variant.body}</p> : null}
+        {variant.body ? <p className="mt-1.5 whitespace-pre-line text-sm text-foreground/90">{stripImageTokens(variant.body)}</p> : null}
         <Extras variant={variant} />
         <div className="mt-3">
           <FrameMedia variant={variant} rounded="rounded-md border border-border" />
