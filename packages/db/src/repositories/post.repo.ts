@@ -6,6 +6,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm"
 import type {
   AccountType,
+  ImageSlot,
   Platform,
   PostStatus,
   PostVariant,
@@ -136,6 +137,8 @@ export class DrizzlePostRepo implements PostRepo {
         publishMode: v.publishMode,
         state: v.state,
         suggestedTime: v.suggestedTime || null,
+        // 图片占位符数组：无则存 null（可选字段，历史数据/无插图的 variant 均如此）。
+        imageSlots: v.imageSlots ?? null,
       })),
     )
     return variants
@@ -178,5 +181,7 @@ function rowToVariant(row: VariantRow): PostVariant {
     publishMode: (row.publishMode as PublishMode | null) ?? "manual",
     state: (row.state as VariantState | null) ?? "Valid",
     suggestedTime: row.suggestedTime ?? "",
+    // 回读：DB 里为 null（无插图/历史数据）时统一转为 undefined，与 PostVariant 的可选字段语义对齐。
+    imageSlots: (row.imageSlots as ImageSlot[] | null) ?? undefined,
   }
 }

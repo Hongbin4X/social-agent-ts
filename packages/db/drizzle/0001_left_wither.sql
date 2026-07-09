@@ -1,0 +1,1 @@
+ALTER TABLE `ssa_post_variant` ADD `image_slots` json;

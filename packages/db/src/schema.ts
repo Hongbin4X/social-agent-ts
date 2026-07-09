@@ -17,6 +17,7 @@ import type {
   BillingActionType,
   ContentGoal,
   GenerationErrorCode,
+  ImageSlot,
   Platform,
   PostStatus,
   PublishMode,
@@ -150,6 +151,9 @@ export const ssaPostVariant = mysqlTable(
     format: varchar("format", { length: 100 }),
     mediaAsset: varchar("media_asset", { length: 100 }),
     mediaAssetId: varchar("media_asset_id", { length: 32 }),
+    // 图片占位符（正文内联 [[img:N]] 对应的描述/尺寸/生成状态数组）——随 variant 一起持久化，
+    // 避免刷新/重新生成后丢失已编辑的插图描述（与 platforms/tags 同用 json + $type 模式）。
+    imageSlots: json("image_slots").$type<ImageSlot[]>(),
     publishMode: varchar("publish_mode", { length: 10 }).$type<PublishMode>(),
     state: varchar("state", { length: 30 }).$type<VariantState>(),
     suggestedTime: varchar("suggested_time", { length: 10 }),
