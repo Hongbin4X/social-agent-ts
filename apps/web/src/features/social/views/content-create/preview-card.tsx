@@ -1,7 +1,7 @@
 "use client"
 
 import type { PostVariant } from "@social/shared"
-import { splitBodyByImageTokens } from "@social/shared"
+import { splitBodyByImageTokens, stripImageTokens } from "@social/shared"
 import { Button } from "@/components/ui/button"
 import { PlatformBadge } from "@/features/social/components/ui"
 import { useLang } from "@/features/social/i18n"
@@ -82,7 +82,9 @@ export function PreviewCard({
             )}
           </div>
         ) : (
-          <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{variant.body || t("No copy yet.", "尚无文案。")}</p>
+          // FIX 2（无 slots 分支也会漏 token）：模型偶尔会吐出 [[img:N]] 但没配套生成 imageSlots，
+          // 这条旧的纯文本渲染路径不做按 token 分段，必须先剥离 token 再展示，否则会当成字面文案泄漏给用户。
+          <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{stripImageTokens(variant.body) || t("No copy yet.", "尚无文案。")}</p>
         )}
 
         {slots.length === 0 && showMedia ? (

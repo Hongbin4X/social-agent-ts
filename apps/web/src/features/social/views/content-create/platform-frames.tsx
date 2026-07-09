@@ -9,6 +9,7 @@
 // 配图/比例复用 helpers.ratioOf 与 preview-card 已有的「真图 or 占位」逻辑，保持一致。
 
 import type { Platform, PostVariant } from "@social/shared"
+import { stripImageTokens } from "@social/shared"
 import { useLang } from "@/features/social/i18n"
 import { cn } from "@/lib/utils"
 import { ratioOf } from "./helpers"
@@ -52,8 +53,10 @@ function Avatar({ name, className, square = false }: { name?: string; className?
   )
 }
 
-// 配图块：与 preview-card 同源逻辑——有 mediaUrl 显真图，否则占位；No media 视平台决定是否显示空态。
+// 配图块：与 preview-card 同源逻辑——有真图显真图，否则占位；No media 视平台决定是否显示空态。
 // forceRatio 让个别平台强制固定比例（如 YouTube 缩略图恒 16:9）；缺省走 variant.format 推导。
+// FIX 1（内容库预览隐藏配图槽真图）：image 模式生成的帖子，真图落在 variant.imageSlots[].url（status "ready"），
+// 从不写回 variant.mediaUrl——旧逻辑只认 mediaUrl，会把已出图的帖子误判成"无媒体"从而不渲染/显示占位。
 function FrameMedia({
   variant,
   rounded = "rounded-lg",
@@ -68,10 +71,17 @@ function FrameMedia({
   className?: string
 }) {
   const { t } = useLang()
-  const noMedia = !variant.mediaAsset || variant.mediaAsset === "No media"
+  // 只取第一张 ready 配图槽做代表图：这里是单槽 mini 预览卡片，不是多图画廊，多图场景不归它管。
+  const readyImages = (variant.imageSlots ?? []).filter((s) => s.status === "ready" && s.url)
+  const representativeUrl = readyImages[0]?.url
+  const legacyNoMedia = !variant.mediaAsset || variant.mediaAsset === "No media"
+  // 有配图槽真图时视为"有媒体"，即便 mediaAsset 仍是旧字段的 "No media" 兜底值（image 模式帖子不写 mediaAsset）。
+  const noMedia = legacyNoMedia && !representativeUrl
   // 文本型平台（X/Reddit/Facebook）无媒体时直接不渲染图；图片型平台（IG/YT/TikTok）显示占位空态。
   if (noMedia && !showEmptyState) return null
   const ratio = (forceRatio ?? ratioOf(variant.format)).replace(":", "/")
+  // 优先配图槽真图（image 模式帖子的实际配图来源），否则退回旧的 mediaUrl（legacy/非 image 模式帖子）。
+  const imageUrl = representativeUrl ?? (variant.mediaUrl && !legacyNoMedia ? variant.mediaUrl : undefined)
   return (
     <div
       style={{ aspectRatio: ratio }}
@@ -81,10 +91,10 @@ function FrameMedia({
         className,
       )}
     >
-      {variant.mediaUrl && !noMedia ? (
-        // 真实生成的图片（本地 FS 经 /media 反代）。用户内容动态 URL，用原生 img。
+      {imageUrl ? (
+        // 真实生成的图片（配图槽 url，或本地 FS 经 /media 反代的 mediaUrl）。用户内容动态 URL，用原生 img。
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={variant.mediaUrl} alt={t("Post image", "帖子配图")} className="absolute inset-0 h-full w-full object-cover" />
+        <img src={imageUrl} alt={t("Post image", "帖子配图")} className="absolute inset-0 h-full w-full object-cover" />
       ) : (
         <span className="flex items-center gap-1.5 px-3 text-center">
           <ImageIcon className="size-4 shrink-0" />
@@ -96,12 +106,15 @@ function FrameMedia({
 }
 
 // 正文段：hook 作强调首句 + body 正文。空态给占位。whitespace-pre-line 保留换行。
+// FIX 1（内容库预览 token 泄漏）：这是纯文本展示位，不逐槽渲染配图，所以要把 [[img:N]] 占位 token
+// 剥离掉，否则会作为字面文案显示给用户；复用与 preview-card 同源的 stripImageTokens，口径一致。
 function BodyText({ hook, body, className }: { hook?: string; body?: string; className?: string }) {
   const { t } = useLang()
+  const displayBody = stripImageTokens(body ?? "")
   return (
     <div className={cn("space-y-1", className)}>
       {hook ? <p className="text-sm font-semibold text-foreground">{hook}</p> : null}
-      <p className="whitespace-pre-line text-sm text-foreground/90">{body || (hook ? "" : t("No copy yet.", "尚无文案。"))}</p>
+      <p className="whitespace-pre-line text-sm text-foreground/90">{displayBody || (hook ? "" : t("No copy yet.", "尚无文案。"))}</p>
     </div>
   )
 }

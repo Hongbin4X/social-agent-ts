@@ -705,6 +705,16 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     // 按槽出图场景下即使 imageGenerated 没置位，只要任一变体里有槽已经 ready，也算"有图"。
     const hasReadyImage =
       studio.imageGenerated || variants.some((v) => (v.imageSlots ?? []).some((sl) => sl.status === "ready"))
+    // FIX 3（不持久化 "generating" 状态）：如果用户在某个槽出图中途点了保存，直接把 variants 原样存库，
+    // "generating" 会被落进 DB；下次加载这条帖子时既没有真实请求在跑，也不会再收到出图完成回调，
+    // 那颗槽就会变成永久转圈的假死状态。这里只在存库前把它兜底改回 "empty"（未生成过），
+    // "ready"/"failed"/"empty" 保持不变；不影响上面已经算好的 hasReadyImage（只看 "ready"）。
+    // 只在原本就有 imageSlots 的变体上做转换，没有 slots 的变体保持原样（不无中生有塞一个空数组进去）。
+    const variantsToSave = variants.map((v) =>
+      v.imageSlots
+        ? { ...v, imageSlots: v.imageSlots.map((sl) => (sl.status === "generating" ? { ...sl, status: "empty" as const } : sl)) }
+        : v,
+    )
     try {
       const { post } = await api.savePost({
         projectId: activeProjectId,
@@ -713,7 +723,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         assetType: hasReadyImage ? "Copy + image" : "Copy",
         status: "Ready",
         hasImage: hasReadyImage,
-        variants,
+        variants: variantsToSave,
       })
       setPosts((prev) => [post, ...prev])
       pushToast(translate("Saved to Content Library", "已保存到内容库"), "success")
