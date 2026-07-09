@@ -27,7 +27,7 @@ import type {
   PostVariant,
   Recommendation,
 } from "@social/shared"
-import { platformPublishMode } from "@social/shared"
+import { insertImageToken, platformPublishMode } from "@social/shared"
 import type { ContentGenerator } from "../ports"
 import { GeneratorError } from "../errors"
 
@@ -127,7 +127,18 @@ export class StubContentGenerator implements ContentGenerator {
       throw new GeneratorError("content_invalid", "generateVariants 需要至少一个平台")
     }
     // N 平台 → N 条定制变体（每条复刻前端 buildVariant 的逐平台定制）。
-    const variants = input.platforms.map((p) => buildStubVariant(p, input.topic, input.brand))
+    const wantsImage = (input.modes ?? []).includes("image")
+    const variants = input.platforms.map((p) => {
+      const v = buildStubVariant(p, input.topic, input.brand)
+      if (!wantsImage) return v
+      // 桩：加 1 张配图槽，正文追加对应 [[img:1]] 标记（离线也能驱动占位 UI，形状与 llm.ts 解析结果一致）。
+      const ratio = ratioFromFormat(v.format)
+      return {
+        ...v,
+        body: insertImageToken(v.body, 1),
+        imageSlots: [{ ref: 1, description: `${input.topic || "post"} — hero image`, ratio, status: "empty" as const }],
+      }
+    })
     return { variants }
   }
 
@@ -139,8 +150,10 @@ export class StubContentGenerator implements ContentGenerator {
 
   async generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
     const ratio = ratioFromFormat(input.format)
+    // 有槽描述（description）优先作占位图标签——与 llm.ts 出图 prompt 的取值优先级保持一致。
+    const label = input.description || input.hook || input.body || "post"
     return {
-      assetUrl: placeholderImage(input.platform, ratio, input.hook || input.body || "post"),
+      assetUrl: placeholderImage(input.platform, ratio, label),
       mimeType: "image/svg+xml",
       ratio,
     }

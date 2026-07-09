@@ -149,6 +149,34 @@ describe("StubContentGenerator 其它动作", () => {
   })
 })
 
+describe("Stub image 模式", () => {
+  // StubContentGenerator 已在顶层从 "../src" 导入，此处不再重复导入（避免重复声明报错）。
+  it("image 模式产出 1 个 slot 且 body 含 [[img:1]]", async () => {
+    const gen = new StubContentGenerator()
+    const out = await gen.generateVariants({
+      topic: "t",
+      platforms: ["Instagram"],
+      brand: { brandName: "B", description: "d", targetMarket: "US" },
+      modes: ["image"],
+    })
+    const v = out.variants[0]
+    expect(v.body).toContain("[[img:1]]")
+    expect(v.imageSlots?.[0]).toMatchObject({ ref: 1, status: "empty" })
+  })
+
+  it("非 image 模式：无 slot、body 无 token", async () => {
+    const gen = new StubContentGenerator()
+    const out = await gen.generateVariants({
+      topic: "t",
+      platforms: ["Instagram"],
+      brand: { brandName: "B", description: "d", targetMarket: "US" },
+      modes: ["copy"],
+    })
+    expect(out.variants[0].imageSlots).toBeUndefined()
+    expect(out.variants[0].body).not.toContain("[[img:")
+  })
+})
+
 describe("GenerationService 计费三段式", () => {
   it("成功：reserve → settle（各一次），不 refund；返回 ok + reservationId + actualCredits", async () => {
     const billing = makeBilling()
