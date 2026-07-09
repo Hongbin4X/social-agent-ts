@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -24,7 +25,6 @@ import { api } from "@/features/social/data/api"
 import { translate } from "@/features/social/i18n"
 import type {
   Account,
-  AccountStatus,
   BrandProfile,
   CalendarItem,
   ContentGoal,
@@ -94,6 +94,7 @@ interface Store {
   credits: number
   profile: BrandProfile
   updateProfile: (patch: Partial<BrandProfile>) => void
+  saveProfile: () => Promise<void>
   profileCompletion: () => { pct: number; missing: number }
   generateProfileDraft: () => void
 
@@ -278,45 +279,61 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const createWorkspace = useCallback(
-    (input: WorkspaceInput) => {
-      const ws = {
-        ...initialWorkspace,
-        id: nextId("ws"),
-        name: input.name,
-        brandName: input.brandName,
-        description: input.description,
-        targetMarket: input.targetMarket,
-        platforms: input.platforms,
-        primaryGoal: input.primaryGoal,
-        websiteUrl: input.websiteUrl,
-        tone: input.tone,
+    async (input: WorkspaceInput) => {
+      try {
+        const { workspace: ws, project } = await api.createWorkspace({
+          name: input.name,
+          brandName: input.brandName,
+          description: input.description,
+          targetMarket: input.targetMarket,
+          platforms: input.platforms,
+          primaryGoal: input.primaryGoal,
+          websiteUrl: input.websiteUrl,
+          tone: input.tone,
+        })
+        setWorkspace({
+          ...initialWorkspace,
+          id: ws.id,
+          name: ws.name,
+          timezone: ws.timezone,
+          brandName: input.brandName,
+          description: input.description,
+          targetMarket: input.targetMarket,
+          platforms: input.platforms,
+          primaryGoal: input.primaryGoal,
+          websiteUrl: input.websiteUrl,
+          tone: input.tone,
+        })
+        const firstProject: Project = {
+          id: project.id,
+          brandName: input.brandName,
+          description: input.description,
+          targetMarket: input.targetMarket,
+          platforms: input.platforms,
+          primaryGoal: input.primaryGoal,
+          websiteUrl: input.websiteUrl,
+          tone: input.tone,
+        }
+        setProjects([firstProject])
+        setActiveProjectId(firstProject.id)
+        setProfile((p) => ({
+          ...p,
+          brandName: input.brandName,
+          description: input.description,
+          targetMarket: input.targetMarket,
+          platforms: input.platforms,
+          contentGoals: [input.primaryGoal],
+          websiteUrl: input.websiteUrl || "",
+          tone: input.tone || "",
+        }))
+        setPosts([])
+        setCalendar([])
+        setView("agent")
+        setAgentTab("Home")
+        pushToast(translate("Workspace created", "已创建工作区"), "success")
+      } catch (e) {
+        pushToast(translate(`Create workspace failed: ${(e as Error).message}`, `创建工作区失败：${(e as Error).message}`), "warn")
       }
-      setWorkspace(ws)
-      const firstProject: Project = {
-        id: nextId("proj"),
-        brandName: input.brandName,
-        description: input.description,
-        targetMarket: input.targetMarket,
-        platforms: input.platforms,
-        primaryGoal: input.primaryGoal,
-        websiteUrl: input.websiteUrl,
-        tone: input.tone,
-      }
-      setProjects([firstProject])
-      setActiveProjectId(firstProject.id)
-      setProfile((p) => ({
-        ...p,
-        brandName: input.brandName,
-        description: input.description,
-        targetMarket: input.targetMarket,
-        platforms: input.platforms,
-        contentGoals: [input.primaryGoal],
-        websiteUrl: input.websiteUrl || "",
-        tone: input.tone || "",
-      }))
-      setView("agent")
-      setAgentTab("Home")
-      pushToast(translate("Workspace created", "已创建工作区"), "success")
     },
     [pushToast],
   )
@@ -348,33 +365,111 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  // 竞态守卫：连续/并发切项目时只应用「最后一次」发起的加载结果（旧请求返回则丢弃）。
+  const loadSeqRef = useRef(0)
+  // 加载某品牌档案的项目级资源（完整档案 + 帖子 + 日历）——切项目与初次进入都用它，保证资源随 projectId 切换。
+  const loadProjectResources = useCallback(async (projectId: string) => {
+    const seq = ++loadSeqRef.current
+    try {
+      const [bpRes, postsRes, calRes] = await Promise.all([
+        api.getBrandProfile(projectId),
+        api.getPosts(projectId),
+        api.getCalendar(projectId),
+      ])
+      if (seq !== loadSeqRef.current) return // 已有更新的加载发起，丢弃本次结果
+      if (bpRes.brandProfile) setProfile(bpRes.brandProfile)
+      setPosts(postsRes.posts)
+      setCalendar(calRes.calendar)
+    } catch (e) {
+      console.warn("[store] 加载项目资源失败：", (e as Error).message)
+    }
+  }, [])
+
   const createProject = useCallback(
-    (input: ProjectInput) => {
-      const proj: Project = { id: nextId("proj"), ...input }
-      setProjects((prev) => [...prev, proj])
-      setActiveProjectId(proj.id)
-      applyProjectToState(proj)
-      setView("agent")
-      setAgentTab("Home")
-      pushToast(translate(`Project "${proj.brandName}" created`, `已创建项目"${proj.brandName}"`), "success")
+    async (input: ProjectInput) => {
+      try {
+        const { project } = await api.createProject({
+          brandName: input.brandName,
+          description: input.description,
+          targetMarket: input.targetMarket,
+          platforms: input.platforms,
+          primaryGoal: input.primaryGoal,
+          websiteUrl: input.websiteUrl,
+          tone: input.tone,
+        })
+        const proj: Project = {
+          id: project.id,
+          brandName: project.brandName,
+          description: project.description,
+          targetMarket: project.targetMarket,
+          platforms: project.platforms,
+          primaryGoal: project.primaryGoal as ContentGoal,
+          websiteUrl: project.websiteUrl,
+          tone: project.tone,
+        }
+        setProjects((prev) => [...prev, proj])
+        setActiveProjectId(proj.id)
+        applyProjectToState(proj)
+        setPosts([]) // 新品牌暂无帖子/日历
+        setCalendar([])
+        await api.setActiveProject(proj.id)
+        setView("agent")
+        setAgentTab("Home")
+        pushToast(translate(`Project "${proj.brandName}" created`, `已创建项目"${proj.brandName}"`), "success")
+      } catch (e) {
+        pushToast(translate(`Create project failed: ${(e as Error).message}`, `创建项目失败：${(e as Error).message}`), "warn")
+      }
     },
     [applyProjectToState, pushToast],
   )
 
   const switchProject = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const proj = projects.find((p) => p.id === id)
       if (!proj) return
-      setActiveProjectId(id)
+      setActiveProjectId(id) // 本地即时切换核心字段，UI 无延迟
       applyProjectToState(proj)
       pushToast(translate(`Switched to ${proj.brandName}`, `已切换到 ${proj.brandName}`), "default")
+      try {
+        await api.setActiveProject(id) // 落库 active project（刷新后仍选中它）
+      } catch (e) {
+        console.warn("[store] 设置 active project 失败：", (e as Error).message)
+      }
+      // 资源隔离的核心：拉该品牌自己的帖子 / 日历 / 完整档案，替换当前视图数据。
+      await loadProjectResources(id)
     },
-    [projects, applyProjectToState, pushToast],
+    [projects, applyProjectToState, pushToast, loadProjectResources],
   )
 
   const updateProfile = useCallback((patch: Partial<BrandProfile>) => {
     setProfile((p) => ({ ...p, ...patch }))
   }, [])
+
+  // 显式保存品牌档案到后端（Brand Profile 面板「保存」按钮触发）；updateProfile 仅改本地即时态。
+  const saveProfile = useCallback(async () => {
+    if (!activeProjectId) {
+      pushToast(translate("Select a project first", "请先选择项目"), "warn")
+      return
+    }
+    try {
+      const { brandProfile } = await api.updateBrandProfile(activeProjectId, profile)
+      if (brandProfile) setProfile(brandProfile)
+      // 档案里的核心字段（名称/描述/市场/平台）同步到切换器与顶部 workspace 展示。
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === activeProjectId
+            ? { ...p, brandName: profile.brandName, description: profile.description, targetMarket: profile.targetMarket, platforms: profile.platforms }
+            : p,
+        ),
+      )
+      setWorkspace((w) =>
+        w ? { ...w, brandName: profile.brandName, description: profile.description, targetMarket: profile.targetMarket, platforms: profile.platforms } : w,
+      )
+      pushToast(translate("Brand profile saved", "品牌资料已保存"), "success")
+    } catch (e) {
+      pushToast(translate(`Save failed: ${(e as Error).message}`, `保存失败：${(e as Error).message}`), "warn")
+    }
+  }, [activeProjectId, profile, pushToast])
 
   const profileCompletion = useCallback(() => {
     const checks = [
@@ -397,20 +492,21 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     return { pct, missing: checks.length - filled }
   }, [profile])
 
-  const generateProfileDraft = useCallback(() => {
-    setCredits((c) => c - 12)
-    setProfile((p) => ({
-      ...p,
-      productUrl: p.productUrl || "https://northstar.ai/product",
-      targetAudience: p.targetAudience || "startup founders, indie makers, marketing leads",
-      tone: p.tone || "clear, helpful, slightly bold",
-      defaultCta: p.defaultCta || "Start your free trial",
-      hashtags: p.hashtags || "#AIProductivity #StartupTools",
-      visualStyle: p.visualStyle || "Clean, modern, high-contrast product shots",
-      brandColors: p.brandColors || "#7C5CFC, #111111, #F5F5F5",
-    }))
-    pushToast(translate("Profile draft generated. Actual credits: 11", "已生成品牌档案草稿。实际 credits：11"), "success")
-  }, [pushToast])
+  // 走后端真实 AI（gpt-5.3-chat）：按网站 URL 草拟缺失的品牌档案字段。回填到本地，用户点「保存」再落库。
+  const generateProfileDraft = useCallback(async () => {
+    if (!activeProjectId) {
+      pushToast(translate("Select a project first", "请先选择项目"), "warn")
+      return
+    }
+    try {
+      const { patch, credits } = await api.generateProfileDraft(activeProjectId, profile.websiteUrl || "")
+      setProfile((p) => ({ ...p, ...patch }))
+      setCredits((c) => c - credits)
+      pushToast(translate(`Profile draft generated. Actual credits: ${credits}`, `已生成品牌档案草稿。实际 credits：${credits}`), "success")
+    } catch (e) {
+      pushToast(translate(`Draft failed: ${(e as Error).message}`, `生成草稿失败：${(e as Error).message}`), "warn")
+    }
+  }, [activeProjectId, profile.websiteUrl, pushToast])
 
   const generatePlan = useCallback(() => {
     setCredits((c) => c - 24)
@@ -570,240 +666,301 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   }, [activeProjectId, studio.topic, studio.platforms, studio.variants, studio.imageGenerated, profile, pushToast])
 
   const addStudioToCalendar = useCallback(
-    (date = "Wed Jul 8", time = "09:00") => {
-      setStudio((s) => {
-        if (s.variants.length === 0 && !s.topic) return s
-        const variants = s.variants.length > 0 ? s.variants : s.platforms.map((p) => buildVariant(p, s.topic, profile))
-        const item: CalendarItem = {
-          id: nextId("cal"),
-          postId: nextId("post"),
-          topic: s.topic || "Untitled topic",
+    async (date = "Wed Jul 8", time = "09:00") => {
+      if (studio.variants.length === 0 && !studio.topic) return
+      if (!activeProjectId) {
+        pushToast(translate("Select a project first", "请先选择项目"), "warn")
+        return
+      }
+      const variants =
+        studio.variants.length > 0 ? studio.variants : studio.platforms.map((p) => buildVariant(p, studio.topic, profile))
+      const jobs = variants.map((v) => ({
+        platform: v.platform,
+        account: v.account,
+        time: v.suggestedTime,
+        publishMode: v.publishMode,
+        status: "Planned" as PostStatus,
+      }))
+      try {
+        const { item } = await api.createCalendarItem({
+          projectId: activeProjectId,
+          topic: studio.topic || "Untitled topic",
           date,
           time,
           status: "Planned",
-          variants: variants.map((v) => ({
-            platform: v.platform,
-            account: v.account,
-            time: v.suggestedTime,
-            publishMode: v.publishMode,
-            status: "Planned" as PostStatus,
-          })),
-        }
+          variants: jobs,
+        })
         setCalendar((prev) => [...prev, item])
-        return s
-      })
-      pushToast(translate("Added to calendar", "已加入日历"), "success")
+        pushToast(translate("Added to calendar", "已加入日历"), "success")
+      } catch (e) {
+        pushToast(translate(`Add to calendar failed: ${(e as Error).message}`, `加入日历失败：${(e as Error).message}`), "warn")
+      }
     },
-    [profile, pushToast],
+    [studio.variants, studio.topic, studio.platforms, activeProjectId, profile, pushToast],
   )
 
   const addPlanItemToCalendar = useCallback(
-    (item: PlanItem) => {
-      const calItem: CalendarItem = {
-        id: nextId("cal"),
-        postId: nextId("post"),
-        topic: item.topic,
-        date: item.date,
-        time: item.time,
-        status: "Planned",
-        variants: item.platforms.map((p) => ({
-          platform: p,
-          account: VARIANT_DEFAULTS[p].account,
-          time: item.time,
-          publishMode: platformPublishMode(p),
-          status: "Planned" as PostStatus,
-        })),
+    async (item: PlanItem) => {
+      if (!activeProjectId) {
+        pushToast(translate("Select a project first", "请先选择项目"), "warn")
+        return
       }
-      setCalendar((prev) => [...prev, calItem])
-      setPlan((prev) => prev.map((pi) => (pi.id === item.id ? { ...pi, status: "Scheduled" } : pi)))
-      pushToast(translate("Added to calendar", "已加入日历"), "success")
+      const jobs = item.platforms.map((p) => ({
+        platform: p,
+        account: VARIANT_DEFAULTS[p].account,
+        time: item.time,
+        publishMode: platformPublishMode(p),
+        status: "Planned" as PostStatus,
+      }))
+      try {
+        const { item: calItem } = await api.createCalendarItem({
+          projectId: activeProjectId,
+          topic: item.topic,
+          date: item.date,
+          time: item.time,
+          status: "Planned",
+          variants: jobs,
+        })
+        setCalendar((prev) => [...prev, calItem])
+        setPlan((prev) => prev.map((pi) => (pi.id === item.id ? { ...pi, status: "Scheduled" } : pi)))
+        pushToast(translate("Added to calendar", "已加入日历"), "success")
+      } catch (e) {
+        pushToast(translate(`Add to calendar failed: ${(e as Error).message}`, `加入日历失败：${(e as Error).message}`), "warn")
+      }
     },
-    [pushToast],
+    [activeProjectId, pushToast],
   )
 
   const rescheduleCalendarItem = useCallback(
-    (id: string, date: string, time: string) => {
+    async (id: string, date: string, time: string) => {
       setCalendar((prev) =>
         prev.map((c) =>
           c.id === id ? { ...c, date, time, variants: c.variants.map((v) => ({ ...v, time })) } : c,
         ),
       )
+      try {
+        await api.updateCalendarItem(id, { date, time })
+      } catch (e) {
+        console.warn("[store] 改期落库失败：", (e as Error).message)
+      }
       pushToast(translate("Job rescheduled", "任务已重新排期"), "success")
     },
     [pushToast],
   )
 
   const cancelCalendarItem = useCallback(
-    (id: string) => {
-      setCalendar((prev) =>
-        prev.map((c) =>
-          c.id === id
-            ? { ...c, status: "Cancelled", variants: c.variants.map((v) => ({ ...v, status: "Cancelled" as PostStatus })) }
-            : c,
-        ),
-      )
+    async (id: string) => {
+      const item = calendar.find((c) => c.id === id)
+      const jobs = (item?.variants ?? []).map((v) => ({ ...v, status: "Cancelled" as PostStatus }))
+      setCalendar((prev) => prev.map((c) => (c.id === id ? { ...c, status: "Cancelled", variants: jobs } : c)))
+      try {
+        if (activeProjectId) await api.updateCalendarJobs(id, { projectId: activeProjectId, itemStatus: "Cancelled", jobs })
+        else await api.updateCalendarItem(id, { status: "Cancelled" })
+      } catch (e) {
+        console.warn("[store] 取消落库失败：", (e as Error).message)
+      }
       pushToast(translate("Job cancelled", "任务已取消"), "default")
     },
-    [pushToast],
+    [calendar, activeProjectId, pushToast],
   )
 
+  // 注：这里把日历任务标记为 Published 是「状态记录落库」，不代表已真发到平台。真实自动发布走 /api/publish（发布层，
+  // 需平台 OAuth token，属外部联调 seam）。联调后把这里改成调发布层、按其结果回写状态即可。
   const publishCalendarItemNow = useCallback(
-    (id: string) => {
-      setCalendar((prev) =>
-        prev.map((c) =>
-          c.id === id
-            ? {
-                ...c,
-                status: c.variants.some((v) => v.publishMode === "manual") ? "ManualFallback" : "Published",
-                variants: c.variants.map((v) =>
-                  v.publishMode === "auto" ? { ...v, status: "Published" as PostStatus } : v,
-                ),
-              }
-            : c,
-        ),
+    async (id: string) => {
+      const item = calendar.find((c) => c.id === id)
+      const hasManual = (item?.variants ?? []).some((v) => v.publishMode === "manual")
+      const itemStatus: PostStatus = hasManual ? "ManualFallback" : "Published"
+      const jobs = (item?.variants ?? []).map((v) =>
+        v.publishMode === "auto" ? { ...v, status: "Published" as PostStatus } : v,
       )
+      setCalendar((prev) => prev.map((c) => (c.id === id ? { ...c, status: itemStatus, variants: jobs } : c)))
+      try {
+        if (activeProjectId) await api.updateCalendarJobs(id, { projectId: activeProjectId, itemStatus, jobs })
+      } catch (e) {
+        console.warn("[store] 立即发布落库失败：", (e as Error).message)
+      }
       pushToast(translate("Auto platforms published now", "自动平台已立即发布"), "success")
     },
-    [pushToast],
+    [calendar, activeProjectId, pushToast],
   )
 
   const convertCalendarItemToManual = useCallback(
-    (id: string) => {
-      setCalendar((prev) =>
-        prev.map((c) =>
-          c.id === id
-            ? {
-                ...c,
-                status: "ManualFallback",
-                variants: c.variants.map((v) => ({
-                  ...v,
-                  publishMode: "manual" as const,
-                  status: "ManualFallback" as PostStatus,
-                  reason: "Converted to manual publishing",
-                })),
-              }
-            : c,
-        ),
-      )
+    async (id: string) => {
+      const item = calendar.find((c) => c.id === id)
+      const jobs = (item?.variants ?? []).map((v) => ({
+        ...v,
+        publishMode: "manual" as const,
+        status: "ManualFallback" as PostStatus,
+        reason: "Converted to manual publishing",
+      }))
+      setCalendar((prev) => prev.map((c) => (c.id === id ? { ...c, status: "ManualFallback", variants: jobs } : c)))
+      try {
+        if (activeProjectId) await api.updateCalendarJobs(id, { projectId: activeProjectId, itemStatus: "ManualFallback", jobs })
+      } catch (e) {
+        console.warn("[store] 转手动落库失败：", (e as Error).message)
+      }
       pushToast(translate("Converted to manual fallback", "已转为手动发布"), "default")
     },
-    [pushToast],
+    [calendar, activeProjectId, pushToast],
   )
 
   const schedulePost = useCallback(
-    (post: SocialPost) => {
-      setPosts((prev) =>
-        prev.map((p) => {
-          if (p.id !== post.id) return p
-          const allManual = p.variants.every((v) => v.publishMode === "manual")
-          return { ...p, status: allManual ? "ManualFallback" : "Scheduled", updatedAt: "Just now" }
-        }),
-      )
-      const calItem: CalendarItem = {
-        id: nextId("cal"),
-        postId: post.id,
-        topic: post.title,
-        date: "Wed Jul 8",
-        time: post.variants[0]?.suggestedTime || "09:00",
-        status: post.variants.every((v) => v.publishMode === "manual") ? "ManualFallback" : "Scheduled",
-        variants: post.variants.map((v) => ({
-          platform: v.platform,
-          account: v.account,
-          time: v.suggestedTime,
-          publishMode: v.publishMode,
-          status: v.publishMode === "auto" ? "Scheduled" : "ManualFallback",
-          reason: v.publishMode === "manual" ? "Auto publishing not supported in P0" : undefined,
-        })),
+    async (post: SocialPost) => {
+      if (!activeProjectId) {
+        pushToast(translate("Select a project first", "请先选择项目"), "warn")
+        return
       }
-      setCalendar((prev) => [...prev.filter((c) => c.postId !== post.id), calItem])
-      pushToast(translate("Publish jobs confirmed", "发布任务已确认"), "success")
+      const allManual = post.variants.every((v) => v.publishMode === "manual")
+      const postStatus: PostStatus = allManual ? "ManualFallback" : "Scheduled"
+      const jobs = post.variants.map((v) => ({
+        platform: v.platform,
+        account: v.account,
+        time: v.suggestedTime,
+        publishMode: v.publishMode,
+        status: (v.publishMode === "auto" ? "Scheduled" : "ManualFallback") as PostStatus,
+        reason: v.publishMode === "manual" ? "Auto publishing not supported in P0" : undefined,
+      }))
+      try {
+        await api.updatePost(post.id, { status: postStatus })
+        const { item } = await api.createCalendarItem({
+          projectId: activeProjectId,
+          postId: post.id,
+          topic: post.title,
+          date: "Wed Jul 8",
+          time: post.variants[0]?.suggestedTime || "09:00",
+          status: postStatus,
+          variants: jobs,
+        })
+        setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, status: postStatus, updatedAt: "Just now" } : p)))
+        setCalendar((prev) => [...prev.filter((c) => c.postId !== post.id), item])
+        pushToast(translate("Publish jobs confirmed", "发布任务已确认"), "success")
+      } catch (e) {
+        pushToast(translate(`Schedule failed: ${(e as Error).message}`, `排期失败：${(e as Error).message}`), "warn")
+      }
+    },
+    [activeProjectId, pushToast],
+  )
+
+  const markManuallyPublished = useCallback(
+    async (postId: string) => {
+      try {
+        await api.updatePost(postId, { status: "ManuallyPublished" })
+        setPosts((prev) =>
+          prev.map((p) => (p.id === postId ? { ...p, status: "ManuallyPublished", updatedAt: "Just now" } : p)),
+        )
+        setCalendar((prev) =>
+          prev.map((c) =>
+            c.postId === postId
+              ? {
+                  ...c,
+                  status: "ManuallyPublished",
+                  variants: c.variants.map((v) =>
+                    v.status === "ManualFallback" ? { ...v, status: "ManuallyPublished" } : v,
+                  ),
+                }
+              : c,
+          ),
+        )
+        pushToast(translate("Marked as manually published", "已标记为手动发布"), "success")
+      } catch (e) {
+        pushToast(translate(`Update failed: ${(e as Error).message}`, `更新失败：${(e as Error).message}`), "warn")
+      }
     },
     [pushToast],
   )
 
-  const markManuallyPublished = useCallback((postId: string) => {
-    setPosts((prev) =>
-      prev.map((p) => (p.id === postId ? { ...p, status: "ManuallyPublished", updatedAt: "Just now" } : p)),
-    )
-    setCalendar((prev) =>
-      prev.map((c) =>
-        c.postId === postId
-          ? {
-              ...c,
-              status: "ManuallyPublished",
-              variants: c.variants.map((v) =>
-                v.status === "ManualFallback" ? { ...v, status: "ManuallyPublished" } : v,
-              ),
-            }
-          : c,
-      ),
-    )
-    pushToast(translate("Marked as manually published", "已标记为手动发布"), "success")
-  }, [])
+  const retryFailed = useCallback(
+    async (postId: string) => {
+      try {
+        await api.updatePost(postId, { status: "Scheduled", failureReason: null })
+        setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, status: "Scheduled", failureReason: undefined, updatedAt: "Just now" } : p)))
+        setCalendar((prev) =>
+          prev.map((c) =>
+            c.postId === postId
+              ? {
+                  ...c,
+                  status: "Scheduled",
+                  variants: c.variants.map((v) => (v.status === "Failed" ? { ...v, status: "Scheduled", reason: undefined } : v)),
+                }
+              : c,
+          ),
+        )
+        pushToast(translate("Retry scheduled", "已安排重试"), "success")
+      } catch (e) {
+        pushToast(translate(`Retry failed: ${(e as Error).message}`, `重试失败：${(e as Error).message}`), "warn")
+      }
+    },
+    [pushToast],
+  )
 
-  const retryFailed = useCallback((postId: string) => {
-    setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, status: "Scheduled", failureReason: undefined, updatedAt: "Just now" } : p)))
-    setCalendar((prev) =>
-      prev.map((c) =>
-        c.postId === postId
-          ? {
-              ...c,
-              status: "Scheduled",
-              variants: c.variants.map((v) => (v.status === "Failed" ? { ...v, status: "Scheduled", reason: undefined } : v)),
-            }
-          : c,
-      ),
-    )
-    pushToast(translate("Retry scheduled", "已安排重试"), "success")
-  }, [])
-
-  const archivePost = useCallback((postId: string) => {
-    setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, status: "Archived" } : p)))
-    pushToast(translate("Archived", "已归档"), "default")
-  }, [])
+  const archivePost = useCallback(
+    async (postId: string) => {
+      try {
+        await api.updatePost(postId, { status: "Archived" })
+        setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, status: "Archived" } : p)))
+        pushToast(translate("Archived", "已归档"), "default")
+      } catch (e) {
+        pushToast(translate(`Archive failed: ${(e as Error).message}`, `归档失败：${(e as Error).message}`), "warn")
+      }
+    },
+    [pushToast],
+  )
 
   const addManualAccount = useCallback(
-    (a: Omit<Account, "id" | "status" | "type">) => {
-      setAccounts((prev) => [
-        ...prev,
-        { ...a, id: nextId("acc"), type: "manual", status: "UnsupportedPublishing" },
-      ])
-      pushToast(translate("Manual account added", "已添加手动账号"), "success")
+    async (a: Omit<Account, "id" | "status" | "type">) => {
+      try {
+        const { account } = await api.addAccount({ platform: a.platform, name: a.name, url: a.url })
+        setAccounts((prev) => [...prev, account])
+        pushToast(translate("Manual account added", "已添加手动账号"), "success")
+      } catch (e) {
+        pushToast(translate(`Add account failed: ${(e as Error).message}`, `添加账号失败：${(e as Error).message}`), "warn")
+      }
     },
     [pushToast],
   )
 
+  // 注：真实自动发布要平台 OAuth（发布层 TokenStore，属外部联调 seam）。connect/disconnect 这里落库的是账号「连接状态记录」，
+  // 不代表已拿到真实 token；联调平台 OAuth 后把 connect 改成触发授权流程即可，其余不动。
   const connectAccount = useCallback(
-    (platform: Platform) => {
-      setAccounts((prev) =>
-        prev.map((a) =>
-          a.platform === platform && a.status === "NotConnected"
-            ? { ...a, status: "Connected" as AccountStatus, type: "connected", capabilities: "Auto publishing available", expiresAt: "2026-12-31" }
-            : a,
-        ),
-      )
+    async (platform: Platform) => {
+      const target = accounts.find((a) => a.platform === platform && a.status === "NotConnected")
+      if (!target) return
+      const patch = { status: "Connected", type: "connected", capabilities: "Auto publishing available", expiresAt: "2026-12-31" } as const
+      setAccounts((prev) => prev.map((a) => (a.id === target.id ? { ...a, ...patch } : a)))
+      try {
+        await api.updateAccount(target.id, patch)
+      } catch (e) {
+        console.warn("[store] 账号状态落库失败：", (e as Error).message)
+      }
       pushToast(translate(`${platform} connected`, `已连接 ${platform}`), "success")
     },
-    [pushToast],
+    [accounts, pushToast],
   )
 
   const disconnectAccount = useCallback(
-    (id: string) => {
-      setAccounts((prev) =>
-        prev.map((a) =>
-          a.id === id
-            ? { ...a, status: "NotConnected" as AccountStatus, capabilities: "Not connected", expiresAt: undefined }
-            : a,
-        ),
-      )
+    async (id: string) => {
+      const patch = { status: "NotConnected", capabilities: "Not connected" } as const
+      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch, expiresAt: undefined } : a)))
+      try {
+        await api.updateAccount(id, patch)
+      } catch (e) {
+        console.warn("[store] 账号状态落库失败：", (e as Error).message)
+      }
       pushToast(translate("Account disconnected", "已断开账号"), "default")
     },
     [pushToast],
   )
 
   const refreshAccount = useCallback(
-    (id: string) => {
-      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a } : a)))
+    async (id: string) => {
+      void id
+      try {
+        const { accounts: fresh } = await api.getAccounts()
+        setAccounts(fresh)
+      } catch (e) {
+        console.warn("[store] 刷新账号失败：", (e as Error).message)
+      }
       pushToast(translate("Status refreshed", "已刷新状态"), "default")
     },
     [pushToast],
@@ -837,6 +994,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       credits,
       profile,
       updateProfile,
+      saveProfile,
       profileCompletion,
       generateProfileDraft,
       plan,
@@ -891,6 +1049,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       credits,
       profile,
       updateProfile,
+      saveProfile,
       profileCompletion,
       generateProfileDraft,
       plan,

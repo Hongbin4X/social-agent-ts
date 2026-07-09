@@ -78,6 +78,8 @@ export class DrizzleWorkspaceRepo implements WorkspaceRepo {
       id: row.id,
       name: row.name,
       timezone: row.timezone,
+      // 带上 active project id：前端挂载时据此选中 DB 里真正激活的品牌（不再 fallback 到列表第一个）。
+      activeProjectId: row.activeProjectId ?? null,
       brandName: project?.brandName ?? "",
       description: project?.description ?? "",
       targetMarket: project?.targetMarket ?? "",

@@ -86,6 +86,8 @@ export interface Workspace {
   timezone: string
   websiteUrl?: string
   tone?: string
+  // 当前激活的品牌档案 id（资源隔离锚点）。前端据此在挂载/切换时加载对应 project 的帖子/日历/档案。
+  activeProjectId?: string | null
 }
 
 export interface PlanItem {

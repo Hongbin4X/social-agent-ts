@@ -20,7 +20,7 @@ import { useLang } from "@/features/social/i18n"
 import { CONTENT_GOAL_LABELS } from "@/features/social/i18n/labels"
 
 export function BrandProfilePanel() {
-  const { profile, updateProfile, profileCompletion, generateProfileDraft, pushToast } = useSocial()
+  const { profile, updateProfile, saveProfile, profileCompletion, generateProfileDraft } = useSocial()
   const { t, te } = useLang()
   const [confirmDraft, setConfirmDraft] = useState(false)
   const [open, setOpen] = useState(true)
@@ -195,7 +195,7 @@ export function BrandProfilePanel() {
             <Button
               size="sm"
               className="ml-auto bg-brand text-brand-foreground hover:bg-brand/90"
-              onClick={() => pushToast(t("Brand profile saved", "品牌资料已保存"), "success")}
+              onClick={() => saveProfile()}
             >
               {t("Save profile", "保存资料")}
             </Button>

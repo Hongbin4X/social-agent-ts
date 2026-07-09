@@ -16,6 +16,7 @@ import { workspaceRoutes } from "./routes/workspace"
 import { projectRoutes } from "./routes/projects"
 import { accountRoutes } from "./routes/accounts"
 import { postRoutes } from "./routes/posts"
+import { calendarRoutes } from "./routes/calendar"
 import { generateRoutes } from "./routes/generate"
 
 export const app = new Hono<AppEnv>()
@@ -39,7 +40,7 @@ app.route("/api/connections", connectionRoutes)
 
 // ── 领域路由（前端全部操作的接口）。鉴权中间件解析 userId（本地走 DEV_FAKE_USER_ID）。──
 const auth = authMiddleware(serverConfigFromEnv().devFakeUserId)
-for (const base of ["/api/workspace", "/api/projects", "/api/accounts", "/api/posts", "/api/generate"]) {
+for (const base of ["/api/workspace", "/api/projects", "/api/accounts", "/api/posts", "/api/calendar", "/api/generate"]) {
   app.use(base, auth)
   app.use(`${base}/*`, auth)
 }
@@ -47,6 +48,7 @@ app.route("/api/workspace", workspaceRoutes)
 app.route("/api/projects", projectRoutes)
 app.route("/api/accounts", accountRoutes)
 app.route("/api/posts", postRoutes)
+app.route("/api/calendar", calendarRoutes)
 app.route("/api/generate", generateRoutes)
 
 export type AppType = typeof app

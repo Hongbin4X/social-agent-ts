@@ -64,7 +64,7 @@ export const api = {
   createProject: (input: Record<string, unknown>) =>
     req<{ project: ApiProject }>("/projects", { method: "POST", body: JSON.stringify(input) }),
   getBrandProfile: (projectId: string) => req<{ brandProfile: BrandProfile | null }>(`/projects/${projectId}/brand-profile`),
-  updateBrandProfile: (projectId: string, patch: Record<string, unknown>) =>
+  updateBrandProfile: (projectId: string, patch: Partial<BrandProfile>) =>
     req<{ brandProfile: BrandProfile }>(`/projects/${projectId}/brand-profile`, { method: "PATCH", body: JSON.stringify(patch) }),
   getPosts: (projectId: string) => req<{ posts: SocialPost[] }>(`/projects/${projectId}/posts`),
   getCalendar: (projectId: string) => req<{ calendar: CalendarItem[] }>(`/projects/${projectId}/calendar`),
@@ -73,6 +73,8 @@ export const api = {
   getAccounts: () => req<{ accounts: Account[] }>("/accounts"),
   addAccount: (input: { platform: Platform; name: string; url?: string }) =>
     req<{ account: Account }>("/accounts", { method: "POST", body: JSON.stringify(input) }),
+  updateAccount: (id: string, patch: Record<string, unknown>) =>
+    req<{ ok: boolean }>(`/accounts/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 
   // posts
   savePost: (input: {
@@ -84,6 +86,25 @@ export const api = {
     hasImage?: boolean
     variants: PostVariant[]
   }) => req<{ post: SocialPost }>("/posts", { method: "POST", body: JSON.stringify(input) }),
+  updatePost: (id: string, patch: Record<string, unknown>) =>
+    req<{ post: SocialPost }>(`/posts/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+
+  // calendar（排期 / 改期 / 取消 / 立即发布 / 转手动 —— 全部落库）
+  createCalendarItem: (input: {
+    projectId: string
+    postId?: string
+    topic: string
+    date?: string
+    time?: string
+    status?: string
+    variants: CalendarItem["variants"]
+  }) => req<{ item: CalendarItem }>("/calendar", { method: "POST", body: JSON.stringify(input) }),
+  updateCalendarItem: (id: string, patch: Record<string, unknown>) =>
+    req<{ item: CalendarItem }>(`/calendar/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  updateCalendarJobs: (
+    id: string,
+    input: { projectId: string; itemStatus?: string; jobs: CalendarItem["variants"] },
+  ) => req<{ item: CalendarItem }>(`/calendar/${id}/jobs`, { method: "PATCH", body: JSON.stringify(input) }),
 
   // generation
   generateVariants: (input: { projectId: string } & Omit<GenerateVariantsInput, "brand">) =>
