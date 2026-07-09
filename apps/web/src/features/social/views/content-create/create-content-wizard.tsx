@@ -231,8 +231,8 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                     creationMethod === "manual"
                       ? t("Manual mode — you'll write the copy for each network in the next step.", "手动模式——下一步你将为每个平台自行撰写文案。")
                       : t(
-                          "Nail three things and the AI nails the draft: the hook, who it's for, and the action you want — the more specific, the better.\ne.g. Show skincare newcomers the right order — serum before moisturizer — in a warm, friendly tone, ending with a nudge to grab our routine cheatsheet.",
-                          "想清楚三件事，AI 就能写好：讲什么亮点、写给谁看、想让人做什么——越具体越好。\n例：面向敏感肌新手，讲清「先精华、后面霜」的正确顺序，语气亲切，结尾引导领取护肤清单。",
+                          "So, what do you want to post? A product rave, a launch teaser, an event warm-up — the more you tell the AI, the sharper it writes.\ne.g. Recommend a focus-boosting gadget for young professionals, all about barely-there wear, in a professional-yet-witty tone, ending with a nudge to comment.",
+                          "聊聊你想发点什么？不管是单品种草、新品剧透还是活动预热，多透露一点细节 AI 会写得更准。\n例如：推荐一款面向职场新人的自律数码好物，主打无感佩戴，语气专业幽默，文末引导评论。",
                         )
                   }
                   className={cn("min-h-24", creationMethod === "manual" && "cursor-not-allowed bg-muted text-muted-foreground")}
