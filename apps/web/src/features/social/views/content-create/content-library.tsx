@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react"
 import { useSocial } from "@/features/social/store"
-import { type PostStatus, type SocialPost } from "@social/shared"
+import { type Platform, type PostStatus, type SocialPost } from "@social/shared"
 import { Button } from "@/components/ui/button"
 import { Card, PlatformBadge, StatusBadge } from "@/features/social/components/ui"
 import { BatchPublishModal } from "@/features/social/components/batch-publish"
+import { PlatformPreviewModal } from "./platform-preview-modal"
 import { useLang } from "@/features/social/i18n"
 import { STATUS_LABELS } from "@/features/social/i18n/labels"
 import { cn } from "@/lib/utils"
@@ -27,6 +28,8 @@ export function ContentLibrary() {
   const [filter, setFilter] = useState<PostStatus | "All">("All")
   const [selected, setSelected] = useState<string[]>([])
   const [batchOpen, setBatchOpen] = useState(false)
+  // 平台预览弹窗：点击某行某平台图标时，记下 {帖子, 平台} 打开预览。
+  const [preview, setPreview] = useState<{ post: SocialPost; platform: Platform } | null>(null)
 
   const visible = useMemo(
     () => posts.filter((p) => p.status !== "Archived" && (filter === "All" || p.status === filter)),
@@ -78,6 +81,7 @@ export function ContentLibrary() {
               onRetry={() => retryFailed(post.id)}
               onArchive={() => archivePost(post.id)}
               onSchedule={() => schedulePost(post)}
+              onPreview={(platform) => setPreview({ post, platform })}
             />
           ))
         )}
@@ -94,6 +98,13 @@ export function ContentLibrary() {
           setBatchOpen(false)
         }}
       />
+
+      <PlatformPreviewModal
+        key={preview ? `${preview.post.id}:${preview.platform}` : "closed"}
+        post={preview?.post ?? null}
+        initialPlatform={preview?.platform ?? null}
+        onClose={() => setPreview(null)}
+      />
     </Card>
   )
 }
@@ -106,6 +117,7 @@ function LibraryRow({
   onRetry,
   onArchive,
   onSchedule,
+  onPreview,
 }: {
   post: SocialPost
   checked: boolean
@@ -114,6 +126,7 @@ function LibraryRow({
   onRetry: () => void
   onArchive: () => void
   onSchedule: () => void
+  onPreview: (platform: Platform) => void
 }) {
   const { t } = useLang()
   const hasManual = post.variants.some((v) => v.publishMode === "manual")
@@ -129,9 +142,19 @@ function LibraryRow({
             <StatusBadge status={post.status} />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {/* 平台图标可点：点击弹出这条帖子在该平台的发布预览 */}
             <span className="flex items-center gap-1">
               {post.platforms.map((p) => (
-                <PlatformBadge key={p} platform={p} />
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => onPreview(p)}
+                  className="rounded-md transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+                  title={t("Preview on", "预览") + ` ${p}`}
+                  aria-label={t("Preview on", "预览") + ` ${p}`}
+                >
+                  <PlatformBadge platform={p} />
+                </button>
               ))}
             </span>
             <span>·</span>
