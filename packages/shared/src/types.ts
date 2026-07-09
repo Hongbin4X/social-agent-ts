@@ -103,6 +103,20 @@ export interface PlanItem {
   status: "Planned" | "In studio" | "Scheduled"
 }
 
+/** 一张内联配图槽：位置由正文 [[img:ref]] 决定，这里存描述与出图结果。 */
+export interface ImageSlot {
+  ref: number
+  /** 详细图片描述——出图 prompt 的主来源，可编辑。 */
+  description: string
+  /** 比例（默认从平台 format 推，如 "1:1" / "16:9"）。 */
+  ratio?: string
+  status: "empty" | "generating" | "ready" | "failed"
+  /** 出图后的可访问 URL（本地 /media 反代 / 将来 S3）。 */
+  url?: string
+  mimeType?: string
+  failureReason?: string
+}
+
 export interface PostVariant {
   platform: Platform
   account: string
@@ -119,6 +133,8 @@ export interface PostVariant {
   publishMode: PublishMode
   state: VariantState
   suggestedTime: string
+  /** 内联配图槽（image 模式生成/编辑）；正文用 [[img:ref]] 标记位置。 */
+  imageSlots?: ImageSlot[]
 }
 
 export interface SocialPost {

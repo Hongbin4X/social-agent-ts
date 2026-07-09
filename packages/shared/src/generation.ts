@@ -86,6 +86,8 @@ export interface GenerateImageInput {
   brand: BrandContext
   /** 自然语言修改要求（Modify image）；缺省 = 全新生成（Regenerate）。 */
   instruction?: string
+  /** 图片槽描述：有值时作为出图 prompt 主来源（取代 hook+body 拼接）。 */
+  description?: string
 }
 export interface GenerateImageOutput {
   assetUrl: string

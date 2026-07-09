@@ -13,10 +13,12 @@
     "./publishing": "./src/publishing.ts"
   },
   "scripts": {
+    "test": "vitest run",
     "lint": "echo \"(shared) no lint yet\"",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vitest": "^3.0.5"
   }
 }
