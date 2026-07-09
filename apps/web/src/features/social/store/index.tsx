@@ -113,8 +113,11 @@ interface Store {
     body: string
     mediaAsset?: string
     instruction?: string
+    // 按槽出图：命中正文 [[img:ref]] 的某一槽时传 ref + 该槽描述；不传则回退旧的整贴 mediaUrl 逻辑。
+    slotRef?: number
+    description?: string
   }) => Promise<void>
-  generateVariants: () => Promise<void>
+  generateVariants: (modes?: Array<"copy" | "image" | "video">) => Promise<void>
   startManualVariants: () => void
   updateVariant: (platform: Platform, patch: Partial<PostVariant>) => void
   setStudioPlatforms: (p: Platform[]) => void
@@ -556,7 +559,9 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     pushToast(translate("Copy generated. Actual credits: 7", "已生成文案。实际 credits：7"), "success")
   }, [profile, pushToast])
 
-  // 走后端真实图片模型（gemini image）：按当前变体的平台/格式/文案生成，落库并回填 mediaUrl 展示真图。
+  // 走后端真实图片模型（gemini image）：按当前变体的平台/格式/文案生成，落库并回填展示真图。
+  // 有 slotRef 时是"按槽出图"（正文 [[img:ref]] 内联配图场景）：只更新该变体 imageSlots 里对应 ref 的槽状态，
+  // 不影响同变体的其它槽、也不碰旧的整贴 mediaUrl；没有 slotRef 时保持旧行为（整贴 mediaUrl）。
   const generateImage = useCallback(
     async (params: {
       platform: Platform
@@ -565,21 +570,68 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       body: string
       mediaAsset?: string
       instruction?: string
+      slotRef?: number
+      description?: string
     }) => {
       if (!activeProjectId) {
         pushToast(translate("Select a project first", "请先选择项目"), "warn")
         return
       }
+      // 出图前把目标槽标记 generating（铁律2.5：AI 等待必须有即时反馈，不能让用户对着空槽干等）。
+      if (params.slotRef != null) {
+        setStudio((s) => ({
+          ...s,
+          variants: s.variants.map((v) =>
+            v.platform === params.platform
+              ? { ...v, imageSlots: (v.imageSlots ?? []).map((sl) => (sl.ref === params.slotRef ? { ...sl, status: "generating" } : sl)) }
+              : v,
+          ),
+        }))
+      }
       try {
-        const res = await api.generateImage({ projectId: activeProjectId, ...params })
+        const res = await api.generateImage({
+          projectId: activeProjectId,
+          platform: params.platform,
+          format: params.format,
+          hook: params.hook,
+          body: params.body,
+          mediaAsset: params.mediaAsset,
+          instruction: params.instruction,
+          description: params.description,
+        })
         setCredits((c) => c - res.credits)
         setStudio((s) => ({
           ...s,
           imageGenerated: true,
-          variants: s.variants.map((v) => (v.platform === params.platform ? { ...v, mediaUrl: res.asset.url } : v)),
+          variants: s.variants.map((v) => {
+            if (v.platform !== params.platform) return v
+            if (params.slotRef == null) return { ...v, mediaUrl: res.asset.url }
+            return {
+              ...v,
+              imageSlots: (v.imageSlots ?? []).map((sl) =>
+                sl.ref === params.slotRef ? { ...sl, url: res.asset.url, mimeType: res.asset.mimeType, status: "ready" } : sl,
+              ),
+            }
+          }),
         }))
         pushToast(translate("Image generated (AI)", "已生成图片（AI）"), "success")
       } catch (e) {
+        // 出图失败：只标记目标槽 failed + 原因，不阻塞其它槽；退款由后端三段式负责，前端只反映状态。
+        if (params.slotRef != null) {
+          setStudio((s) => ({
+            ...s,
+            variants: s.variants.map((v) =>
+              v.platform === params.platform
+                ? {
+                    ...v,
+                    imageSlots: (v.imageSlots ?? []).map((sl) =>
+                      sl.ref === params.slotRef ? { ...sl, status: "failed", failureReason: (e as Error).message } : sl,
+                    ),
+                  }
+                : v,
+            ),
+          }))
+        }
         pushToast(translate("Image generation failed", "图片生成失败") + `: ${(e as Error).message}`, "warn")
       }
     },
@@ -587,7 +639,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   )
 
   // 走后端真实 AI（gpt-5.3-chat）：品牌上下文 + 主题 + 平台 → 每平台定制变体。
-  const generateVariants = useCallback(async () => {
+  // modes 透传给后端：P0 只有 copy/image（video 目前只做封面/caption），决定要不要顺带生成配图槽/占位。
+  const generateVariants = useCallback(async (modes?: Array<"copy" | "image" | "video">) => {
     if (!activeProjectId) {
       pushToast(translate("Select a project first", "请先选择项目"), "warn")
       return
@@ -597,8 +650,10 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         projectId: activeProjectId,
         topic: studio.topic || "New social topic",
         platforms: studio.platforms,
+        modes,
       })
-      setStudio((s) => ({ ...s, copyGenerated: true, variants: res.variants }))
+      // imageGenerated 重置为 false：新一轮生成会带来新的 imageSlots（多为 empty），旧的"已出图"标记不该延续。
+      setStudio((s) => ({ ...s, copyGenerated: true, imageGenerated: false, variants: res.variants }))
       setCredits((c) => c - res.credits)
       pushToast(translate(`Variants generated (AI) · credits: ${res.credits}`, `已生成内容变体（AI）· credits：${res.credits}`), "success")
     } catch (e) {
@@ -646,14 +701,18 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     }
     const variants =
       studio.variants.length > 0 ? studio.variants : studio.platforms.map((p) => buildVariant(p, studio.topic, profile))
+    // hasImage/assetType 不能只看 studio.imageGenerated（那是整贴出图时代的旧字段）：
+    // 按槽出图场景下即使 imageGenerated 没置位，只要任一变体里有槽已经 ready，也算"有图"。
+    const hasReadyImage =
+      studio.imageGenerated || variants.some((v) => (v.imageSlots ?? []).some((sl) => sl.status === "ready"))
     try {
       const { post } = await api.savePost({
         projectId: activeProjectId,
         title: studio.topic || "Untitled topic",
         platforms: studio.platforms,
-        assetType: studio.imageGenerated ? "Copy + image" : "Copy",
+        assetType: hasReadyImage ? "Copy + image" : "Copy",
         status: "Ready",
-        hasImage: studio.imageGenerated,
+        hasImage: hasReadyImage,
         variants,
       })
       setPosts((prev) => [post, ...prev])
