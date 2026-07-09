@@ -408,10 +408,10 @@ function NewProjectModal({ open, onClose }: { open: boolean; onClose: () => void
       }
     >
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Brand / project name" required>
-          <TextInput value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="e.g. Northstar AI" />
+        <Field label={t("Brand / project name", "品牌 / 项目名称")} required>
+          <TextInput value={brand} onChange={(e) => setBrand(e.target.value)} placeholder={t("e.g. Northstar AI", "例如 Northstar AI")} />
         </Field>
-        <Field label="Target market">
+        <Field label={t("Target market", "目标市场")}>
           <Select value={market} onChange={(e) => setMarket(e.target.value)}>
             <option>US</option>
             <option>Europe</option>
@@ -420,22 +420,22 @@ function NewProjectModal({ open, onClose }: { open: boolean; onClose: () => void
           </Select>
         </Field>
         <div className="md:col-span-2">
-          <Field label="Product or brand description">
-            <TextArea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What does your product do?" />
+          <Field label={t("Product or brand description", "产品或品牌描述")}>
+            <TextArea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("What does your product do?", "你的产品是做什么的？")} />
           </Field>
         </div>
-        <Field label="Primary content goal">
+        <Field label={t("Primary content goal", "主要内容目标")}>
           <Select value={goal} onChange={(e) => setGoal(e.target.value as ContentGoal)}>
             {CONTENT_GOALS.map((g) => (
               <option key={g}>{g}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Website URL (optional)">
+        <Field label={t("Website URL (optional)", "网站 URL（可选）")}>
           <TextInput value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
         </Field>
         <div className="md:col-span-2">
-          <Field label="Target platforms">
+          <Field label={t("Target platforms", "目标平台")}>
             <div className="flex flex-wrap gap-2">
               {ALL_PLATFORMS.map((p) => (
                 <PlatformChip key={p} platform={p} selected={platforms.includes(p)} onClick={() => togglePlatform(p)} />
@@ -444,8 +444,8 @@ function NewProjectModal({ open, onClose }: { open: boolean; onClose: () => void
           </Field>
         </div>
         <div className="md:col-span-2">
-          <Field label="Brand tone (optional)">
-            <TextInput value={tone} onChange={(e) => setTone(e.target.value)} placeholder="e.g. clear, helpful" />
+          <Field label={t("Brand tone (optional)", "品牌语气（可选）")}>
+            <TextInput value={tone} onChange={(e) => setTone(e.target.value)} placeholder={t("e.g. clear, helpful", "例如 清晰、有帮助")} />
           </Field>
         </div>
       </div>

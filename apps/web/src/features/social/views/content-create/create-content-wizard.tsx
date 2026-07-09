@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useSocial } from "@/features/social/store"
+import { useLang } from "@/features/social/i18n"
+import { VARIANT_STATE_LABELS } from "@/features/social/i18n/labels"
 import { ALL_PLATFORMS, type Platform, type PostVariant } from "@social/shared"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,6 +36,11 @@ import { DAYS, FORMAT_PRESETS, MEDIA_OPTIONS, STATE_META, copyTypeLabel, deriveM
 
 /* ---------- step-by-step create wizard ---------- */
 const WIZARD_STEPS = ["Draft", "Customize per network", "Schedule"] as const
+const WIZARD_STEP_ZH: Record<(typeof WIZARD_STEPS)[number], string> = {
+  Draft: "草稿",
+  "Customize per network": "按平台定制",
+  Schedule: "排期",
+}
 
 export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
   const {
@@ -50,6 +57,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
     schedulePost,
     pushToast,
   } = useSocial()
+  const { t, te } = useLang()
 
   const [step, setStep] = useState<0 | 1 | 2>(0)
   const [creationMethod, setCreationMethod] = useState<"agent" | "manual">("agent")
@@ -87,7 +95,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
 
   const handleCtaPreview = (url?: string) => {
     if (url && url.trim()) setCtaPreview(url.trim())
-    else pushToast("This is a mock CTA preview. Add a destination URL in Brand Profile to make it actionable.", "warn")
+    else pushToast(t("This is a mock CTA preview. Add a destination URL in Brand Profile to make it actionable.", "这是模拟的 CTA 预览。在品牌档案里填写目标链接即可让它真正可点。"), "warn")
   }
 
   const accountOptions = useMemo(() => {
@@ -136,13 +144,13 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Create content"
+        aria-label={t("Create content", "创作内容")}
         className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl"
       >
         {/* header + stepper */}
         <header className="flex items-center justify-between gap-4 border-b border-border px-5 py-3.5">
           <div className="flex items-center gap-4">
-            <h2 className="text-base font-semibold text-foreground">Create content</h2>
+            <h2 className="text-base font-semibold text-foreground">{t("Create content", "创作内容")}</h2>
             <ol className="hidden items-center gap-2 md:flex">
               {WIZARD_STEPS.map((label, i) => (
                 <li key={label} className="flex items-center gap-2">
@@ -158,13 +166,13 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                   >
                     {i < step ? <CircleCheck className="size-3.5" /> : i + 1}
                   </span>
-                  <span className={cn("text-xs font-medium", i === step ? "text-foreground" : "text-muted-foreground")}>{label}</span>
+                  <span className={cn("text-xs font-medium", i === step ? "text-foreground" : "text-muted-foreground")}>{t(label, WIZARD_STEP_ZH[label])}</span>
                   {i < WIZARD_STEPS.length - 1 ? <span className="h-px w-6 bg-border" /> : null}
                 </li>
               ))}
             </ol>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-muted" aria-label="Close">
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-muted" aria-label={t("Close", "关闭")}>
             <X className="size-4" />
           </button>
         </header>
@@ -174,9 +182,9 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
           {step === 0 && (
             <div className="mx-auto max-w-2xl space-y-4 p-5">
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Creation method">
+                <Field label={t("Creation method", "创作方式")}>
                   <div className="grid grid-cols-2 gap-1.5">
-                    {([["agent", "Agent-assisted"], ["manual", "Write manually"]] as const).map(([k, l]) => (
+                    {([["agent", "Agent-assisted", "AI 辅助"], ["manual", "Write manually", "手动撰写"]] as const).map(([k, en, zh]) => (
                       <button
                         key={k}
                         onClick={() => setCreationMethod(k)}
@@ -185,14 +193,14 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                           creationMethod === k ? "border-brand bg-brand-muted text-foreground" : "border-border text-muted-foreground hover:bg-muted",
                         )}
                       >
-                        {l}
+                        {t(en, zh)}
                       </button>
                     ))}
                   </div>
                 </Field>
-                <Field label="Generation mode" hint="Select one or more">
+                <Field label={t("Generation mode", "生成模式")} hint={t("Select one or more", "可多选")}>
                   <div className="grid grid-cols-3 gap-1.5">
-                    {([["copy", "Copy"], ["image", "Image"], ["video", "Video"]] as const).map(([k, l]) => {
+                    {([["copy", "Copy", "文案"], ["image", "Image", "图片"], ["video", "Video", "视频"]] as const).map(([k, en, zh]) => {
                       const selected = genModes.includes(k) && creationMethod !== "manual"
                       return (
                         <button
@@ -206,7 +214,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                               : "border-border text-muted-foreground hover:bg-muted",
                           )}
                         >
-                          {l}
+                          {t(en, zh)}
                         </button>
                       )
                     })}
@@ -214,21 +222,21 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                 </Field>
               </div>
 
-              <Field label="Topic">
+              <Field label={t("Topic", "主题")}>
                 <TextArea
                   value={studio.topic}
                   onChange={(e) => setStudioTopic(e.target.value)}
                   disabled={creationMethod === "manual"}
                   placeholder={
                     creationMethod === "manual"
-                      ? "Manual mode — you'll write the copy for each network in the next step."
-                      : "Describe what this post is about — the agent drafts per-network copy from it."
+                      ? t("Manual mode — you'll write the copy for each network in the next step.", "手动模式——下一步你将为每个平台自行撰写文案。")
+                      : t("Describe what this post is about — the agent drafts per-network copy from it.", "描述这条帖子的主题——AI 会据此为各平台起草文案。")
                   }
                   className={cn("min-h-24", creationMethod === "manual" && "cursor-not-allowed bg-muted text-muted-foreground")}
                 />
               </Field>
 
-              <Field label="Platforms">
+              <Field label={t("Platforms", "平台")}>
                 <div className="flex flex-wrap gap-1.5">
                   {ALL_PLATFORMS.map((p) => (
                     <PlatformChip key={p} platform={p} selected={studio.platforms.includes(p)} onClick={() => togglePlatform(p)} />
@@ -238,8 +246,8 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
 
               <p className="text-xs text-muted-foreground">
                 {creationMethod === "manual"
-                  ? "You'll compose and format the copy yourself for each network. Image generation stays available in the next step."
-                  : "The agent drafts per-network copy, images, and short video assets based on your selected generation modes."}
+                  ? t("You'll compose and format the copy yourself for each network. Image generation stays available in the next step.", "你将为每个平台自行撰写并排版文案；下一步仍可生成图片。")
+                  : t("The agent drafts per-network copy, images, and short video assets based on your selected generation modes.", "AI 会按你选择的生成模式，为各平台起草文案、图片与短视频素材。")}
               </p>
             </div>
           )}
@@ -250,16 +258,16 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
               {generating ? (
                 <div className="flex flex-col items-center gap-2 py-16 text-center">
                   <Loader2 className="size-5 animate-spin text-brand" />
-                  <p className="text-sm font-medium text-foreground">Generating variants…</p>
-                  <p className="text-sm text-muted-foreground">Drafting per-platform copy for {studio.platforms.length} platforms.</p>
+                  <p className="text-sm font-medium text-foreground">{t("Generating variants…", "正在生成内容变体…")}</p>
+                  <p className="text-sm text-muted-foreground">{t(`Drafting per-platform copy for ${studio.platforms.length} platforms.`, `正在为 ${studio.platforms.length} 个平台起草文案。`)}</p>
                 </div>
               ) : variants.length === 0 || !current ? (
                 <div className="flex flex-col items-center gap-2 py-16 text-center">
                   <span className="flex size-9 items-center justify-center rounded-lg bg-brand-muted text-brand">
                     <Sparkles className="size-4" />
                   </span>
-                  <p className="text-sm font-medium text-foreground">No variants yet</p>
-                  <p className="max-w-xs text-sm text-muted-foreground">Go back and generate variants to customize each network.</p>
+                  <p className="text-sm font-medium text-foreground">{t("No variants yet", "还没有内容变体")}</p>
+                  <p className="max-w-xs text-sm text-muted-foreground">{t("Go back and generate variants to customize each network.", "返回上一步生成变体，即可逐个平台定制。")}</p>
                 </div>
               ) : (
                 <div className="grid gap-5 lg:grid-cols-2">
@@ -292,13 +300,13 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                           const Icon = STATE_META[current.state].icon
                           return <Icon className="size-3" />
                         })()}
-                        {STATE_META[current.state].label}
+                        {te(VARIANT_STATE_LABELS[current.state])}
                       </span>
                       <span className="text-xs font-medium text-muted-foreground">{copyTypeLabel(current)}</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Account">
+                      <Field label={t("Account", "账号")}>
                         <Select
                           value={current.account}
                           onChange={(e) => {
@@ -308,12 +316,12 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                         >
                           {accountOptions.map((o) => (
                             <option key={o.name} value={o.name}>
-                              {o.name} {o.type === "connected" ? "· connected" : "· manual"}
+                              {o.name} {o.type === "connected" ? t("· connected", "· 已连接") : t("· manual", "· 手动")}
                             </option>
                           ))}
                         </Select>
                       </Field>
-                      <Field label="Format preset">
+                      <Field label={t("Format preset", "格式预设")}>
                         <Select value={current.format} onChange={(e) => applyEdit({ format: e.target.value })}>
                           {FORMAT_PRESETS[current.platform].map((f) => (
                             <option key={f} value={f}>
@@ -325,7 +333,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                       </Field>
                     </div>
 
-                    <Field label="Hook / title">
+                    <Field label={t("Hook / title", "钩子 / 标题")}>
                       <TextInput value={current.hook} onChange={(e) => applyEdit({ hook: e.target.value })} />
                     </Field>
                     <Field label={copyTypeLabel(current)}>
@@ -334,22 +342,24 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                         onChange={(e) => applyEdit({ body: e.target.value })}
                         autoFocus={creationMethod === "manual"}
                         placeholder={
-                          creationMethod === "manual" ? `Write your ${copyTypeLabel(current).toLowerCase()} here…` : undefined
+                          creationMethod === "manual"
+                            ? t(`Write your ${copyTypeLabel(current).toLowerCase()} here…`, `在此撰写${copyTypeLabel(current)}…`)
+                            : undefined
                         }
                       />
                     </Field>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Hashtags">
+                      <Field label={t("Hashtags", "话题标签")}>
                         <TextInput value={current.hashtags} onChange={(e) => applyEdit({ hashtags: e.target.value })} />
                       </Field>
-                      <Field label="CTA label">
-                        <TextInput value={current.cta} onChange={(e) => applyEdit({ cta: e.target.value })} placeholder="Start your free trial" />
+                      <Field label={t("CTA label", "CTA 文案")}>
+                        <TextInput value={current.cta} onChange={(e) => applyEdit({ cta: e.target.value })} placeholder={t("Start your free trial", "开始免费试用")} />
                       </Field>
-                      <Field label="CTA destination URL">
+                      <Field label={t("CTA destination URL", "CTA 目标链接")}>
                         <TextInput value={current.ctaUrl ?? ""} onChange={(e) => applyEdit({ ctaUrl: e.target.value })} placeholder="https://your-product.com" />
                       </Field>
-                      <Field label="Media asset">
+                      <Field label={t("Media asset", "媒体素材")}>
                         <Select value={current.mediaAsset ?? "No media"} onChange={(e) => applyEdit({ mediaAsset: e.target.value })}>
                           {MEDIA_OPTIONS[current.platform].map((m) => (
                             <option key={m} value={m}>
@@ -368,12 +378,12 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
 
                   {/* right — preview */}
                   <div>
-                    <SectionTitle hint="Mock preview">Post preview</SectionTitle>
+                    <SectionTitle hint={t("Mock preview", "模拟预览")}>{t("Post preview", "帖子预览")}</SectionTitle>
                     <PreviewCard
                       variant={current}
                       hasImage={studio.imageGenerated}
                       onCtaPreview={handleCtaPreview}
-                      onRegenerateImage={() => setPaid({ label: "Regenerate image", credits: 30, run: generateImage })}
+                      onRegenerateImage={() => setPaid({ label: t("Regenerate image", "重新生成图片"), credits: 30, run: generateImage })}
                       onEditImage={() => {
                         setImageEditPrompt("")
                         setImageEditOpen(true)
@@ -389,7 +399,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
           {step === 2 && (
             <div className="mx-auto max-w-xl space-y-4 p-5">
               <div className="rounded-lg border border-border bg-muted/40 p-4">
-                <p className="text-sm font-medium text-foreground">{studio.topic || "Untitled topic"}</p>
+                <p className="text-sm font-medium text-foreground">{studio.topic || t("Untitled topic", "未命名主题")}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {variants.map((v) => (
                     <span key={v.platform} className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-foreground">
@@ -400,9 +410,9 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                 </div>
               </div>
 
-              <Field label="When">
+              <Field label={t("When", "时间")}>
                 <div className="grid grid-cols-2 gap-2">
-                  {([["now", "Publish now"], ["later", "Schedule for later"]] as const).map(([k, l]) => (
+                  {([["now", "Publish now", "立即发布"], ["later", "Schedule for later", "定时发布"]] as const).map(([k, en, zh]) => (
                     <button
                       key={k}
                       onClick={() => setScheduleMode(k)}
@@ -411,7 +421,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                         scheduleMode === k ? "border-brand bg-brand-muted text-foreground" : "border-border text-muted-foreground hover:bg-muted",
                       )}
                     >
-                      {l}
+                      {t(en, zh)}
                     </button>
                   ))}
                 </div>
@@ -419,7 +429,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
 
               {scheduleMode === "later" ? (
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Day">
+                  <Field label={t("Day", "日期")}>
                     <Select value={calDate} onChange={(e) => setCalDate(e.target.value)}>
                       {DAYS.map((d) => (
                         <option key={d} value={d}>
@@ -428,13 +438,13 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                       ))}
                     </Select>
                   </Field>
-                  <Field label="Time">
+                  <Field label={t("Time", "时间")}>
                     <TextInput value={calTime} onChange={(e) => setCalTime(e.target.value)} />
                   </Field>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Auto platforms publish immediately; manual platforms appear as a manual fallback for you to post.
+                  {t("Auto platforms publish immediately; manual platforms appear as a manual fallback for you to post.", "自动平台会立即发布；手动平台会进入手动兜底，供你自行发布。")}
                 </p>
               )}
             </div>
@@ -446,11 +456,11 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
           <div>
             {step > 0 ? (
               <Button variant="outline" size="sm" onClick={() => setStep((s) => (s - 1) as 0 | 1 | 2)}>
-                <ArrowLeft className="size-4" /> Back
+                <ArrowLeft className="size-4" /> {t("Back", "上一步")}
               </Button>
             ) : (
               <Button variant="ghost" size="sm" onClick={onClose}>
-                Cancel
+                {t("Cancel", "取消")}
               </Button>
             )}
           </div>
@@ -464,15 +474,15 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
               >
                 {creationMethod === "manual" ? (
                   <>
-                    Continue to write <ArrowRight className="size-4" />
+                    {t("Continue to write", "继续撰写")} <ArrowRight className="size-4" />
                   </>
                 ) : variants.length === 0 ? (
                   <>
-                    <Wand2 className="size-4" /> Generate &amp; customize
+                    <Wand2 className="size-4" /> {t("Generate & customize", "生成并定制")}
                   </>
                 ) : (
                   <>
-                    Customize for each network <ArrowRight className="size-4" />
+                    {t("Customize for each network", "逐平台定制")} <ArrowRight className="size-4" />
                   </>
                 )}
               </Button>
@@ -484,7 +494,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                 disabled={!current || generating}
                 onClick={() => setStep(2)}
               >
-                Continue to schedule <ArrowRight className="size-4" />
+                {t("Continue to schedule", "继续排期")} <ArrowRight className="size-4" />
               </Button>
             )}
             {step === 2 && (
@@ -497,7 +507,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                     onClose()
                   }}
                 >
-                  <Save className="size-4" /> Save as draft
+                  <Save className="size-4" /> {t("Save as draft", "存为草稿")}
                 </Button>
                 {scheduleMode === "later" ? (
                   <Button
@@ -509,7 +519,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                       onClose()
                     }}
                   >
-                    <CalendarPlus className="size-4" /> Add to calendar
+                    <CalendarPlus className="size-4" /> {t("Add to calendar", "加入日历")}
                   </Button>
                 ) : (
                   <Button
@@ -518,7 +528,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                     disabled={!hasSchedulable}
                     onClick={() => setShowBatch(true)}
                   >
-                    <Send className="size-4" /> Publish now
+                    <Send className="size-4" /> {t("Publish now", "立即发布")}
                   </Button>
                 )}
               </>
@@ -532,11 +542,11 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
         open={paid !== null}
         onClose={() => setPaid(null)}
         title={paid ? `${paid.label}?` : ""}
-        description="This is a paid action. Estimated credits are shown below."
+        description={t("This is a paid action. Estimated credits are shown below.", "这是一次计费动作，预计消耗的 credits 见下方。")}
         footer={
           <>
             <Button variant="outline" size="sm" onClick={() => setPaid(null)}>
-              Cancel
+              {t("Cancel", "取消")}
             </Button>
             <Button
               size="sm"
@@ -546,7 +556,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                 setPaid(null)
               }}
             >
-              Confirm and run
+              {t("Confirm and run", "确认并执行")}
             </Button>
           </>
         }
@@ -562,15 +572,15 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
       <Modal
         open={showVariantsConfirm}
         onClose={() => setShowVariantsConfirm(false)}
-        title="Generate platform variants?"
-        description="One draft will be generated for each selected platform. You can edit every field afterwards."
+        title={t("Generate platform variants?", "生成各平台内容变体？")}
+        description={t("One draft will be generated for each selected platform. You can edit every field afterwards.", "将为每个所选平台生成一份草稿，之后每个字段都可编辑。")}
         footer={
           <>
             <Button variant="outline" size="sm" onClick={() => setShowVariantsConfirm(false)}>
-              Cancel
+              {t("Cancel", "取消")}
             </Button>
             <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={runGenerateVariants}>
-              Confirm and generate
+              {t("Confirm and generate", "确认并生成")}
             </Button>
           </>
         }
@@ -578,7 +588,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
         <div className="space-y-3">
           <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2">
             <span className="text-sm text-foreground">
-              {studio.platforms.length} platform{studio.platforms.length === 1 ? "" : "s"}
+              {t(`${studio.platforms.length} platform${studio.platforms.length === 1 ? "" : "s"}`, `${studio.platforms.length} 个平台`)}
             </span>
             <CreditsPill credits={16} />
           </div>
@@ -596,16 +606,16 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
       <Modal
         open={ctaPreview !== null}
         onClose={() => setCtaPreview(null)}
-        title="CTA destination"
-        description="This is only a preview of where the post's call-to-action would send people. No navigation happens in this demo."
+        title={t("CTA destination", "CTA 目标")}
+        description={t("This is only a preview of where the post's call-to-action would send people. No navigation happens in this demo.", "这只是预览帖子的行动号召会把用户引导到哪里。演示中不会真正跳转。")}
         footer={
           <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={() => setCtaPreview(null)}>
-            Close preview
+            {t("Close preview", "关闭预览")}
           </Button>
         }
       >
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Destination URL</p>
+          <p className="text-xs font-medium text-muted-foreground">{t("Destination URL", "目标链接")}</p>
           <p className="break-all rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">{ctaPreview}</p>
         </div>
       </Modal>
@@ -613,12 +623,12 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
       <Modal
         open={imageEditOpen}
         onClose={() => setImageEditOpen(false)}
-        title="Modify image"
-        description="Describe the change in your own words. The agent regenerates the image based on your notes."
+        title={t("Modify image", "修改图片")}
+        description={t("Describe the change in your own words. The agent regenerates the image based on your notes.", "用你自己的话描述要改什么，AI 会据此重新生成图片。")}
         footer={
           <>
             <Button variant="outline" size="sm" onClick={() => setImageEditOpen(false)}>
-              Cancel
+              {t("Cancel", "取消")}
             </Button>
             <Button
               size="sm"
@@ -630,23 +640,23 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                 setImageEditPrompt("")
               }}
             >
-              <Wand2 className="size-4" /> Apply changes
+              <Wand2 className="size-4" /> {t("Apply changes", "应用修改")}
             </Button>
           </>
         }
       >
         <div className="space-y-3">
-          <Field label="What should change?">
+          <Field label={t("What should change?", "要改什么？")}>
             <TextArea
               value={imageEditPrompt}
               onChange={(e) => setImageEditPrompt(e.target.value)}
               autoFocus
-              placeholder="e.g. make the background darker, add our logo in the top-left, warmer tone"
+              placeholder={t("e.g. make the background darker, add our logo in the top-left, warmer tone", "如：把背景调暗、左上角加上我们的 logo、色调更暖一些")}
               className="min-h-24"
             />
           </Field>
           <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2">
-            <span className="text-sm text-foreground">Regenerate with your edits</span>
+            <span className="text-sm text-foreground">{t("Regenerate with your edits", "按你的修改重新生成")}</span>
             <CreditsPill credits={20} />
           </div>
         </div>
@@ -655,7 +665,7 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
       <BatchPublishModal
         open={showBatch}
         onClose={() => setShowBatch(false)}
-        topic={studio.topic || "Untitled topic"}
+        topic={studio.topic || t("Untitled topic", "未命名主题")}
         variants={variants}
         onConfirm={async () => {
           const post = await saveStudioToLibrary()

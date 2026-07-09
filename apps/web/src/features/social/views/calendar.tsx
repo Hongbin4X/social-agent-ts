@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, Modal, PlatformBadge, StatusBadge, Field, Select } from "@/features/social/components/ui"
 import { useSocial } from "@/features/social/store"
+import { useLang } from "@/features/social/i18n"
 import type { CalendarItem } from "@social/shared"
 
 const WEEK_DAYS = ["Mon Jul 6", "Tue Jul 7", "Wed Jul 8", "Thu Jul 9", "Fri Jul 10", "Sat Jul 11", "Sun Jul 12"]
@@ -37,6 +38,7 @@ export function CalendarTab() {
     posts,
     setAgentTab,
   } = useSocial()
+  const { t } = useLang()
 
   const [view, setView] = useState<"week" | "month">("week")
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -62,8 +64,8 @@ export function CalendarTab() {
       {/* Header controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Calendar & scheduling</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Publishing jobs for the week of Jul 6 – Jul 12</p>
+          <h1 className="text-xl font-semibold text-foreground">{t("Calendar & scheduling", "日历与排期")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("Publishing jobs for the week of Jul 6 – Jul 12", "Jul 6 – Jul 12 当周的发布任务")}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-md border border-border p-0.5">
@@ -74,7 +76,7 @@ export function CalendarTab() {
                 view === "week" ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              Week
+              {t("Week", "周")}
             </button>
             <button
               type="button"
@@ -83,15 +85,15 @@ export function CalendarTab() {
                 view === "month" ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              Month
+              {t("Month", "月")}
             </button>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" className="size-8" aria-label="Previous">
+            <Button variant="outline" size="icon" className="size-8" aria-label={t("Previous", "上一周")}>
               <ChevronLeft className="size-4" />
             </Button>
             <span className="min-w-24 text-center text-sm font-medium text-foreground">Jul 6 – 12</span>
-            <Button variant="outline" size="icon" className="size-8" aria-label="Next">
+            <Button variant="outline" size="icon" className="size-8" aria-label={t("Next", "下一周")}>
               <ChevronRight className="size-4" />
             </Button>
           </div>
@@ -103,8 +105,10 @@ export function CalendarTab() {
         <div className="flex items-center gap-3 rounded-lg border border-status-fallback/30 bg-[oklch(0.97_0.03_70)] px-4 py-2.5">
           <AlertTriangle className="size-4 shrink-0 text-status-fallback" />
           <p className="text-sm text-foreground">
-            {needsAttention.length} job{needsAttention.length === 1 ? "" : "s"} need attention — failed or manual
-            fallback.
+            {t(
+              `${needsAttention.length} job${needsAttention.length === 1 ? "" : "s"} need attention — failed or manual fallback.`,
+              `${needsAttention.length} 个任务需要关注 —— 失败或转手动。`,
+            )}
           </p>
         </div>
       ) : null}
@@ -122,7 +126,7 @@ export function CalendarTab() {
                 </div>
                 <div className="flex flex-1 flex-col gap-2 p-2">
                   {items.length === 0 ? (
-                    <p className="px-1 py-3 text-center text-xs text-muted-foreground">No jobs</p>
+                    <p className="px-1 py-3 text-center text-xs text-muted-foreground">{t("No jobs", "暂无任务")}</p>
                   ) : (
                     items.map((item) => (
                       <button
@@ -181,12 +185,15 @@ export function CalendarTab() {
       <Modal
         open={reschedule !== null}
         onClose={() => setReschedule(null)}
-        title="Reschedule job"
-        description="Pick a new day and time. Auto platforms will re-queue; manual fallbacks keep their reminder."
+        title={t("Reschedule job", "重新排期")}
+        description={t(
+          "Pick a new day and time. Auto platforms will re-queue; manual fallbacks keep their reminder.",
+          "选择新的日期与时间。自动平台将重新排队；转手动的任务会保留其提醒。",
+        )}
         footer={
           <>
             <Button variant="outline" size="sm" onClick={() => setReschedule(null)}>
-              Cancel
+              {t("Cancel", "取消")}
             </Button>
             <Button
               size="sm"
@@ -196,14 +203,14 @@ export function CalendarTab() {
                 setReschedule(null)
               }}
             >
-              Confirm reschedule
+              {t("Confirm reschedule", "确认重新排期")}
             </Button>
           </>
         }
       >
         {reschedule ? (
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Day">
+            <Field label={t("Day", "日期")}>
               <Select value={reschedule.date} onChange={(e) => setReschedule({ ...reschedule, date: e.target.value })}>
                 {WEEK_DAYS.map((d) => (
                   <option key={d} value={d}>
@@ -212,7 +219,7 @@ export function CalendarTab() {
                 ))}
               </Select>
             </Field>
-            <Field label="Time">
+            <Field label={t("Time", "时间")}>
               <Select value={reschedule.time} onChange={(e) => setReschedule({ ...reschedule, time: e.target.value })}>
                 {TIME_SLOTS.map((t) => (
                   <option key={t} value={t}>
@@ -305,6 +312,7 @@ function JobDrawer({
   onRetry: (item: CalendarItem) => void
   onGoToLibrary: () => void
 }) {
+  const { t } = useLang()
   if (!item) return null
 
   const hasAuto = item.variants.some((v) => v.publishMode === "auto")
@@ -318,7 +326,7 @@ function JobDrawer({
       <aside
         role="dialog"
         aria-modal="true"
-        aria-label="Job detail"
+        aria-label={t("Job detail", "任务详情")}
         className="relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-border bg-card shadow-xl"
       >
         <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
@@ -338,7 +346,7 @@ function JobDrawer({
             type="button"
             onClick={onClose}
             className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-            aria-label="Close"
+            aria-label={t("Close", "关闭")}
           >
             <ChevronRight className="size-4" />
           </button>
@@ -346,7 +354,7 @@ function JobDrawer({
 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Per-platform jobs ({item.variants.length})
+            {t("Per-platform jobs", "各平台任务")} ({item.variants.length})
           </h3>
           {item.variants.map((v) => (
             <div key={v.platform} className="rounded-lg border border-border p-3">
@@ -361,9 +369,9 @@ function JobDrawer({
                 <StatusBadge status={v.status} />
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                <span className="tabular-nums">Fires at {v.time}</span>
+                <span className="tabular-nums">{t("Fires at", "触发于")} {v.time}</span>
                 <span className={v.publishMode === "auto" ? "text-status-published" : "text-status-fallback"}>
-                  {v.publishMode === "auto" ? "Auto publish" : "Manual fallback"}
+                  {v.publishMode === "auto" ? t("Auto publish", "自动发布") : t("Manual fallback", "转手动")}
                 </span>
               </div>
               {v.reason ? (
@@ -381,21 +389,21 @@ function JobDrawer({
               className="w-full justify-center bg-brand text-brand-foreground hover:bg-brand/90"
               onClick={() => onRetry(item)}
             >
-              <RefreshCw className="size-4" /> Retry failed auto jobs
+              <RefreshCw className="size-4" /> {t("Retry failed auto jobs", "重试失败的自动任务")}
             </Button>
           ) : null}
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" size="sm" disabled={isDone} onClick={() => onReschedule(item)}>
-              <CalendarClock className="size-4" /> Reschedule
+              <CalendarClock className="size-4" /> {t("Reschedule", "重新排期")}
             </Button>
             <Button variant="outline" size="sm" disabled={isDone || !hasAuto} onClick={() => onPublishNow(item.id)}>
-              <Send className="size-4" /> Publish now
+              <Send className="size-4" /> {t("Publish now", "立即发布")}
             </Button>
             <Button variant="outline" size="sm" disabled={isDone || !hasAuto} onClick={() => onConvertManual(item.id)}>
-              <Hand className="size-4" /> To manual
+              <Hand className="size-4" /> {t("To manual", "转为手动")}
             </Button>
             <Button variant="outline" size="sm" disabled={isDone} onClick={() => onCancel(item.id)}>
-              <Ban className="size-4" /> Cancel job
+              <Ban className="size-4" /> {t("Cancel job", "取消任务")}
             </Button>
           </div>
           {hasManual ? (
@@ -404,7 +412,7 @@ function JobDrawer({
               onClick={onGoToLibrary}
               className="flex w-full items-center justify-center gap-1.5 py-1 text-xs text-muted-foreground hover:text-foreground"
             >
-              <CheckCircle2 className="size-3.5" /> Open in Content Create to export manual copy
+              <CheckCircle2 className="size-3.5" /> {t("Open in Content Create to export manual copy", "在内容创作中打开以导出手动文案")}
             </button>
           ) : null}
         </div>

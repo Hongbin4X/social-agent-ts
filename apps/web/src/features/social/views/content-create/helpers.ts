@@ -1,4 +1,5 @@
 import { AUTO_PLATFORMS } from "@/features/social/store"
+import { translate } from "@/features/social/i18n"
 import type { Platform, PostVariant, VariantState } from "@social/shared"
 import { CircleCheck, TriangleAlert } from "lucide-react"
 
@@ -51,31 +52,45 @@ export function deriveState(v: Pick<PostVariant, "platform" | "format" | "accoun
 }
 
 export function copyTypeLabel(v: Pick<PostVariant, "platform" | "format">): string {
+  // 平台名是专有名词、保持原样，只翻描述性词（caption/title/description/post 等）。
   switch (v.platform) {
     case "TikTok":
-      return "TikTok caption (on-screen text)"
+      return translate("TikTok caption (on-screen text)", "TikTok 文案（屏幕文字）")
     case "Instagram":
-      return isReelsCover(v) ? "Instagram Reels caption" : "Instagram caption"
+      return isReelsCover(v)
+        ? translate("Instagram Reels caption", "Instagram Reels 文案")
+        : translate("Instagram caption", "Instagram 文案")
     case "YouTube":
-      return /short/i.test(v.format) ? "YouTube Shorts caption" : "YouTube title + description"
+      return /short/i.test(v.format)
+        ? translate("YouTube Shorts caption", "YouTube Shorts 文案")
+        : translate("YouTube title + description", "YouTube 标题 + 描述")
     case "X":
-      return "X post"
+      return translate("X post", "X 帖子")
     case "Reddit":
-      return "Reddit title + body"
+      return translate("Reddit title + body", "Reddit 标题 + 正文")
     case "Facebook":
-      return "Facebook post"
+      return translate("Facebook post", "Facebook 帖子")
   }
 }
 
 export function validations(v: PostVariant): { text: string; ok: boolean }[] {
+  // 面向用户的检查项文案：用模块级 translate 就地双语（平台名/mediaAsset 数据值保持原样，P0 术语保留）。
   const out: { text: string; ok: boolean }[] = []
-  out.push(v.body.trim() ? { text: "Copy length OK", ok: true } : { text: "Copy needs content before publishing", ok: false })
-  if (v.mediaAsset === "No media") out.push({ text: "Text-only post — no media attached", ok: true })
-  else out.push({ text: `Media ratio set to ${ratioOf(v.format)} (${v.mediaAsset})`, ok: true })
-  if (v.accountType === "manual") out.push({ text: "Manual account: automatic publishing unavailable", ok: false })
-  if (v.platform === "YouTube") out.push({ text: "YouTube video upload is out of P0 scope", ok: false })
-  if (v.platform === "TikTok") out.push({ text: "TikTok video generation is not supported in P0", ok: false })
-  if (isReelsCover(v)) out.push({ text: "Reels video generation is not supported in P0", ok: false })
-  if (v.platform === "Reddit") out.push({ text: "Subreddit rules apply — review before posting", ok: false })
+  out.push(
+    v.body.trim()
+      ? { text: translate("Copy length OK", "文案长度合适"), ok: true }
+      : { text: translate("Copy needs content before publishing", "发布前文案需填写内容"), ok: false },
+  )
+  if (v.mediaAsset === "No media") out.push({ text: translate("Text-only post — no media attached", "纯文本帖子 — 未附带媒体"), ok: true })
+  else
+    out.push({
+      text: translate(`Media ratio set to ${ratioOf(v.format)} (${v.mediaAsset})`, `媒体比例已设为 ${ratioOf(v.format)}（${v.mediaAsset}）`),
+      ok: true,
+    })
+  if (v.accountType === "manual") out.push({ text: translate("Manual account: automatic publishing unavailable", "手动账号：无法自动发布"), ok: false })
+  if (v.platform === "YouTube") out.push({ text: translate("YouTube video upload is out of P0 scope", "YouTube 视频上传不在 P0 范围内"), ok: false })
+  if (v.platform === "TikTok") out.push({ text: translate("TikTok video generation is not supported in P0", "P0 暂不支持 TikTok 视频生成"), ok: false })
+  if (isReelsCover(v)) out.push({ text: translate("Reels video generation is not supported in P0", "P0 暂不支持 Reels 视频生成"), ok: false })
+  if (v.platform === "Reddit") out.push({ text: translate("Subreddit rules apply — review before posting", "需遵守子版块规则 — 发布前请先核对"), ok: false })
   return out
 }

@@ -115,11 +115,12 @@ function LibraryRow({
   onArchive: () => void
   onSchedule: () => void
 }) {
+  const { t } = useLang()
   const hasManual = post.variants.some((v) => v.publishMode === "manual")
   return (
     <div className="rounded-md border border-border px-4 py-3.5">
       <div className="flex items-start gap-3">
-        <button onClick={onToggle} className="mt-0.5 text-muted-foreground hover:text-foreground" aria-label="Select post">
+        <button onClick={onToggle} className="mt-0.5 text-muted-foreground hover:text-foreground" aria-label={t("Select post", "选择帖子")}>
           {checked ? <CheckSquare className="size-5 text-brand" /> : <Square className="size-5" />}
         </button>
         <div className="min-w-0 flex-1">
@@ -136,14 +137,17 @@ function LibraryRow({
             <span>·</span>
             <span>{post.assetType}</span>
             <span>·</span>
-            <span>Updated {post.updatedAt}</span>
+            <span>{t("Updated", "更新于")} {post.updatedAt}</span>
           </div>
           {post.status === "Failed" && post.failureReason ? (
             <p className="mt-2 rounded-md bg-[oklch(0.96_0.03_27)] px-2.5 py-1.5 text-xs text-status-failed">{post.failureReason}</p>
           ) : null}
           {hasManual && post.status === "ManualFallback" ? (
             <p className="mt-2 rounded-md bg-[oklch(0.97_0.03_70)] px-2.5 py-1.5 text-xs text-[oklch(0.48_0.13_55)]">
-              Some platforms require manual publishing in this version. Use the platform export, then mark as published.
+              {t(
+                "Some platforms require manual publishing in this version. Use the platform export, then mark as published.",
+                "当前版本部分平台需手动发布。请使用平台导出功能，随后标记为已发布。",
+              )}
             </p>
           ) : null}
         </div>
@@ -151,24 +155,24 @@ function LibraryRow({
           {post.status === "Ready" ? (
             <Button size="sm" variant="outline" onClick={onSchedule}>
               <Send className="size-3.5" />
-              Schedule
+              {t("Schedule", "排期")}
             </Button>
           ) : null}
           {post.status === "Failed" ? (
             <Button size="sm" variant="outline" onClick={onRetry}>
               <RefreshCw className="size-3.5" />
-              Retry
+              {t("Retry", "重试")}
             </Button>
           ) : null}
           {(post.status === "ManualFallback" || post.status === "Scheduled") && hasManual ? (
             <Button size="sm" variant="outline" onClick={onMarkPublished}>
               <CircleCheck className="size-3.5" />
-              Mark published
+              {t("Mark published", "标记已发布")}
             </Button>
           ) : null}
           <button onClick={onArchive} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted">
             <Archive className="size-3.5" />
-            Archive
+            {t("Archive", "归档")}
           </button>
         </div>
       </div>

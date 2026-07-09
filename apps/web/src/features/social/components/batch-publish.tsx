@@ -54,7 +54,7 @@ export function BatchPublishModal({
                 <PlatformBadge platform={v.platform} size="md" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">
-                    {v.platform} · {v.account || "No account"}
+                    {v.platform} · {v.account || t("No account", "未绑定账号")}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
                     {v.suggestedTime} · {v.format} · {v.hook.slice(0, 40)}
@@ -70,7 +70,7 @@ export function BatchPublishModal({
                 }
               >
                 {auto ? <CircleCheck className="size-3" /> : <TriangleAlert className="size-3" />}
-                {auto ? "Auto publishing available" : "Manual fallback required"}
+                {auto ? t("Auto publishing available", "支持自动发布") : t("Manual fallback required", "需转为手动发布")}
               </span>
             </div>
           )
@@ -78,9 +78,15 @@ export function BatchPublishModal({
       </div>
       {manualCount > 0 ? (
         <p className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-          {manualCount} platform{manualCount === 1 ? "" : "s"} cannot auto-publish in P0 and will enter{" "}
-          <span className="font-medium text-[oklch(0.48_0.13_55)]">Manual fallback</span>. You can still confirm — auto platforms
-          become Scheduled.
+          {t(
+            `${manualCount} platform${manualCount === 1 ? "" : "s"} cannot auto-publish in P0 and will enter`,
+            `${manualCount} 个平台在 P0 阶段无法自动发布，将转入`,
+          )}{" "}
+          <span className="font-medium text-[oklch(0.48_0.13_55)]">{t("Manual fallback", "转手动")}</span>
+          {t(
+            ". You can still confirm — auto platforms become Scheduled.",
+            "。你仍可确认——可自动发布的平台将变为已排期。",
+          )}
         </p>
       ) : null}
     </Modal>
