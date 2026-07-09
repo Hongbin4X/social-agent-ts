@@ -44,6 +44,22 @@ export const VARIANT_SYSTEM_TEMPLATES: Record<Platform, string> = {
   ].join(" "),
 }
 
+// ── 通用防编造约束（grounding）──
+// 问题：主题只给品类/卖点、没给具体产品时（如「推荐一款自律数码好物」），模型会凭空造一个
+//   带假名字/假参数/假价格的 SKU，把虚构当事实——对种草文案是致命的。
+// 解法：给一段硬约束，要求「只依据已知事实、缺具体就留占位符、绝不编造」。
+// 关键：由 buildVariantPrompt 统一追加到 system 末尾，所以即使后台用 DB 模板覆盖了平台人格，
+//   这条底线依然生效（不可被业务模板绕过）。
+export const GROUNDING_RULES = [
+  "Grounding rules (do NOT fabricate):",
+  "- Treat the brand context and the topic above as your ONLY source of truth. Do not add facts that are not there.",
+  "- Never invent specifics that were not provided: no made-up product or model names, prices, discounts, spec numbers, release dates, statistics, study results, awards, or customer quotes.",
+  "- If the topic gives only a category or a selling point (e.g. 'a focus-boosting gadget, barely-there to wear') without a specific product, write at THAT level: sell the benefit, the use-case and the feeling, and refer to the product only by the real brand name from the context. Do not invent a specific model, sub-brand, or feature list.",
+  "- If a concrete detail is genuinely required by the copy but missing, insert a short bracketed placeholder such as [product name] or [key spec] instead of making one up, so the user can fill it in. Use placeholders sparingly.",
+  "- When unsure, stay a little more general rather than stating anything that could be false. Honest and slightly vague beats specific and fabricated.",
+  "- Write the post in the same language as the topic.",
+].join("\n")
+
 /** 内置默认实现：从上面的 Map 取模板；仅 generateVariants 走模板，其它动作返回 null（adapter 用内联 prompt）。 */
 export class DefaultPromptTemplateProvider implements PromptTemplateProvider {
   async getTemplate(platform: Platform, actionType: BillingActionType): Promise<string | null> {
@@ -69,13 +85,18 @@ export function buildVariantPrompt(
 ): PromptMessages {
   const b = input.brand
   const topic = input.topic || "New social topic"
-  const system = renderTemplate(template, {
-    platform,
-    brandName: b.brandName ?? "",
-    description: b.description ?? "",
-    tone: b.tone ?? "",
-    topic,
-  })
+  // system = 平台人格模板（占位符注入后） + 通用防编造底线。
+  // grounding 放最后，作为不可被平台/DB 模板绕过的硬约束。
+  const system =
+    renderTemplate(template, {
+      platform,
+      brandName: b.brandName ?? "",
+      description: b.description ?? "",
+      tone: b.tone ?? "",
+      topic,
+    }) +
+    "\n\n" +
+    GROUNDING_RULES
 
   // user 消息：喂给模型的"当前品牌档案 + 本次主题 + 输出格式契约"。只放非空字段，避免噪声。
   const context: string[] = [

@@ -11,11 +11,14 @@ import type {
   GenerateVariantsInput,
 } from "@social/shared"
 import {
+  buildVariantPrompt,
   DefaultPromptTemplateProvider,
   GenerationService,
   GeneratorError,
+  GROUNDING_RULES,
   LlmContentGenerator,
   StubContentGenerator,
+  VARIANT_SYSTEM_TEMPLATES,
   type ContentGenerator,
 } from "../src"
 
@@ -294,5 +297,40 @@ describe("LlmContentGenerator（注入 fetch 桩）", () => {
       llm.generateVariants({ topic: "t", platforms: ["X"], brand: BRAND }),
     ).rejects.toMatchObject({ code: "not_configured" })
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it("发出的 system 消息里带上防编造 grounding 约束", async () => {
+    const fetchImpl = vi.fn(async () =>
+      chatResponse({ hook: "h", body: "b", hashtags: "", cta: "c", format: "Landscape 16:9", mediaAsset: "No media" }),
+    ) as unknown as typeof fetch
+    const llm = makeLlm(fetchImpl)
+    await llm.generateVariants({ topic: "推荐一款自律数码好物，主打无感佩戴", platforms: ["X"], brand: BRAND })
+    const init = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit
+    const sent = JSON.parse(init.body as string) as { messages: { role: string; content: string }[] }
+    const sys = sent.messages.find((m) => m.role === "system")!.content
+    expect(sys).toContain("do NOT fabricate")
+    expect(sys).toMatch(/placeholder/i)
+  })
+})
+
+describe("防编造 grounding 约束（buildVariantPrompt）", () => {
+  it("system 末尾追加通用防编造约束，且平台人格仍在、主题进 user", () => {
+    const input: GenerateVariantsInput = {
+      topic: "推荐一款面向职场新人的自律数码好物，主打无感佩戴",
+      platforms: ["X"],
+      brand: BRAND,
+    }
+    const { system, user } = buildVariantPrompt("X", input, VARIANT_SYSTEM_TEMPLATES.X)
+    expect(system).toContain("You write posts for X") // 平台人格保留
+    expect(system).toContain(GROUNDING_RULES) // 防编造底线追加
+    expect(system).toContain("do NOT fabricate")
+    expect(user).toContain("自律数码好物") // 主题照常进 user
+  })
+
+  it("即使平台模板被后台覆盖，grounding 底线依然注入（不可绕过）", () => {
+    const overridden = "You are a fully custom brand voice for {{brandName}}."
+    const { system } = buildVariantPrompt("X", { topic: "x", platforms: ["X"], brand: BRAND }, overridden)
+    expect(system).toContain("You are a fully custom brand voice for Northstar AI.")
+    expect(system).toContain(GROUNDING_RULES)
   })
 })

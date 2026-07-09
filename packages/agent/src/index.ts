@@ -33,6 +33,7 @@ export {
   DefaultPromptTemplateProvider,
   buildVariantPrompt,
   VARIANT_SYSTEM_TEMPLATES,
+  GROUNDING_RULES,
 } from "./prompts"
 
 // 环境装配
