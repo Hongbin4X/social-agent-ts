@@ -32,6 +32,7 @@ import {
   X,
 } from "lucide-react"
 import { PreviewCard } from "./preview-card"
+import { ImageSlotPanel } from "./image-slot-panel"
 import { DAYS, FORMAT_PRESETS, MEDIA_OPTIONS, STATE_META, copyTypeLabel, deriveMode, deriveState } from "./helpers"
 
 /* ---------- step-by-step create wizard ---------- */
@@ -66,6 +67,9 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
     setGenModes((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]))
   const [imageEditOpen, setImageEditOpen] = useState(false)
   const [imageEditPrompt, setImageEditPrompt] = useState("")
+  // 按槽「修改」时暂存目标槽 ref + 描述，供 Modify 弹窗确认时一并带上 slotRef/description 出图；
+  // 不设置（null）时走旧的整贴 mediaUrl 修改逻辑（复用同一个弹窗 UI）。
+  const [modifySlot, setModifySlot] = useState<{ ref: number; description: string } | null>(null)
   const [activeVariant, setActiveVariant] = useState<Platform | null>(null)
   const [paid, setPaid] = useState<{ label: string; credits: number; run: () => void } | null>(null)
   const [showVariantsConfirm, setShowVariantsConfirm] = useState(false)
@@ -118,7 +122,8 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
     setGenerating(true)
     setStep(1)
     try {
-      await generateVariants()
+      // 透传用户选中的生成模式（copy/image/video），后端据此决定是否顺带起草配图槽/视频素材。
+      await generateVariants(genModes)
       setActiveVariant(studio.platforms[0] ?? null)
     } finally {
       setGenerating(false)
@@ -352,6 +357,37 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                       />
                     </Field>
 
+                    {/* 配图槽面板：仅在生成模式含 image 时展示（沿用 genModes 选择，与「生成模式」一致）。 */}
+                    {genModes.includes("image") && current ? (
+                      <ImageSlotPanel
+                        current={current}
+                        onApplyEdit={applyEdit}
+                        onGenerate={(ref, description) =>
+                          setPaid({
+                            label: t("Generate image", "生成配图"),
+                            credits: 30,
+                            run: () =>
+                              generateImage({
+                                platform: current.platform,
+                                format: current.format,
+                                hook: current.hook,
+                                body: current.body,
+                                mediaAsset: current.mediaAsset,
+                                slotRef: ref,
+                                description,
+                              }),
+                          })
+                        }
+                        onModify={(ref, description) => {
+                          setActiveVariant(current.platform)
+                          setImageEditPrompt("")
+                          // 复用现有 Modify 弹窗：把目标槽 ref/描述暂存，弹窗确认时带 instruction + slotRef 出图。
+                          setModifySlot({ ref, description })
+                          setImageEditOpen(true)
+                        }}
+                      />
+                    ) : null}
+
                     <div className="grid grid-cols-2 gap-3">
                       <Field label={t("Hashtags", "话题标签")}>
                         <TextInput value={current.hashtags} onChange={(e) => applyEdit({ hashtags: e.target.value })} />
@@ -402,6 +438,8 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                       }
                       onEditImage={() => {
                         setImageEditPrompt("")
+                        // 整贴（非按槽）修图：清掉可能残留的 modifySlot，避免误把上一次按槽修改的 slotRef 带过来。
+                        setModifySlot(null)
                         setImageEditOpen(true)
                       }}
                     />
@@ -638,12 +676,22 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
 
       <Modal
         open={imageEditOpen}
-        onClose={() => setImageEditOpen(false)}
+        onClose={() => {
+          setImageEditOpen(false)
+          setModifySlot(null)
+        }}
         title={t("Modify image", "修改图片")}
         description={t("Describe the change in your own words. The agent regenerates the image based on your notes.", "用你自己的话描述要改什么，AI 会据此重新生成图片。")}
         footer={
           <>
-            <Button variant="outline" size="sm" onClick={() => setImageEditOpen(false)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setImageEditOpen(false)
+                setModifySlot(null)
+              }}
+            >
               {t("Cancel", "取消")}
             </Button>
             <Button
@@ -659,9 +707,13 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                     body: current.body,
                     mediaAsset: current.mediaAsset,
                     instruction: imageEditPrompt,
+                    // modifySlot 非空 = 按槽修改（面板里点「修改」进来的）；为空则走整贴 mediaUrl 修改（PreviewCard 的旧入口）。
+                    slotRef: modifySlot?.ref,
+                    description: modifySlot?.description,
                   })
                 setImageEditOpen(false)
                 setImageEditPrompt("")
+                setModifySlot(null)
               }}
             >
               <Wand2 className="size-4" /> {t("Apply changes", "应用修改")}
