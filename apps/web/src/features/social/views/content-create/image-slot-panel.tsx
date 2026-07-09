@@ -63,7 +63,14 @@ export function ImageSlotPanel({
             <li key={s.ref} className="rounded-md border border-border p-2">
               <div className="flex items-center justify-between">
                 <span className="rounded bg-brand-muted px-1.5 py-0.5 text-[11px] font-semibold text-brand">[[img:{s.ref}]]</span>
-                <button type="button" onClick={() => removeSlot(s.ref)} className="text-[11px] text-muted-foreground hover:text-foreground">
+                {/* 生成中禁止删除：否则删空后 nextImageRef 会回收同一 ref，in-flight 出图返回时会把图错挂到新槽。 */}
+                <button
+                  type="button"
+                  disabled={s.status === "generating"}
+                  onClick={() => removeSlot(s.ref)}
+                  title={s.status === "generating" ? t("Wait for generation to finish", "请等待生成完成") : undefined}
+                  className="text-[11px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   {t("Remove", "删除")}
                 </button>
               </div>
