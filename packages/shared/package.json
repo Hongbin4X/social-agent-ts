@@ -1,0 +1,22 @@
+{
+  "name": "@social/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "跨前后端共享的领域类型、枚举常量与计费表。无构建步骤：直接暴露 TS 源码，由消费方（Next.js transpilePackages / 后端 tsx）编译。",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./constants": "./src/constants.ts",
+    "./publishing": "./src/publishing.ts"
+  },
+  "scripts": {
+    "lint": "echo \"(shared) no lint yet\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}

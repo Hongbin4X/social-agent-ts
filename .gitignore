@@ -1,1 +1,31 @@
+# 原型参考（不入库）
 /references/
+
+# 依赖
+node_modules/
+
+# 构建产物
+.next/
+dist/
+out/
+*.tsbuildinfo
+
+# turbo
+.turbo/
+
+# 环境变量（第三方 key 明文写在各包内的 application 配置里，不在此忽略）
+.env
+.env*.local
+
+# 编辑器 / 系统
+.DS_Store
+.vscode/
+.idea/
+
+# v0 sandbox 残留（原型带来的）
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+.snowflake/
+.v0-trash/
+.vercel/

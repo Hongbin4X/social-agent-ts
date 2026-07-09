@@ -1,0 +1,25 @@
+{
+  "name": "server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Super Social Agent 后端 BFF —— P0 仅脚手架占位：代理 GLBGPT（登录/计费/模型 Key）、领域服务、agent 编排的落点。业务逻辑后续实现。",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "lint": "echo \"(server) no lint yet\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@social/publisher": "workspace:*",
+    "@social/shared": "workspace:*",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "tsx": "^4.19.2",
+    "typescript": "5.7.3"
+  }
+}

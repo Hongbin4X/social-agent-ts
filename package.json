@@ -1,0 +1,23 @@
+{
+  "name": "social-agent-ts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Super Social Agent —— GLBGPT 内嵌社媒 Agent 工具（pnpm monorepo）",
+  "packageManager": "pnpm@10.4.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:server": "pnpm --filter server dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.1",
+    "turbo": "^2.5.0",
+    "typescript": "5.7.3"
+  }
+}

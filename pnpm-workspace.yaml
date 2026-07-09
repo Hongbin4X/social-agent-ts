@@ -1,0 +1,5 @@
+# pnpm 工作区定义：前端 apps/web、后端 apps/server（占位）、共享包 packages/*
+# 选型决策见 docs/superpowers/specs/2026-07-09-social-agent-monorepo-architecture-design.md
+packages:
+  - "apps/*"
+  - "packages/*"

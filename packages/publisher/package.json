@@ -1,0 +1,26 @@
+{
+  "name": "@social/publisher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "社媒发布/分发层：统一 SocialPublisher port + 各平台 adapter（X/Meta 直连、TikTok/YouTube/Reddit 手动兜底、聚合服务可选）+ 发布编排 service。与 @social/agent（生成）互为姊妹包。无构建步骤：直接暴露 TS 源码。",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "echo \"(publisher) no lint yet\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@social/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

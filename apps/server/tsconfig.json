@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    // 仅做类型检查：P0 后端由 tsx 直接运行 src（非 tsc 产物），且共享包 @social/* 以 TS 源码形式被引用。
+    // 因此不设 rootDir/outDir（那会把跨包源码判成"越界的待编译文件"报 TS6059）；真实打包在部署阶段再定。
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@social/shared": ["../../packages/shared/src/index.ts"],
+      "@social/publisher": ["../../packages/publisher/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}
