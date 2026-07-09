@@ -112,6 +112,8 @@ export interface PostVariant {
   ctaUrl?: string
   format: string
   mediaAsset?: string
+  /** 真实生成图片的可访问 URL（本地 FS 经 /media 反代 / 将来 S3）。有值时预览展示真图而非占位。 */
+  mediaUrl?: string
   publishMode: PublishMode
   state: VariantState
   suggestedTime: string

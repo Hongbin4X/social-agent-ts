@@ -119,10 +119,20 @@ generateRoutes.post("/image", async (c) => {
   const result = await getContainer().generation.runGenerateImage(p.ctx, input)
   const jobId = await recordJob(p.repos, p.ctx, body.instruction ? "modifyImage" : "regenerateImage", input, result)
   if (!result.ok) return c.json({ error: result.code, message: result.message, generationJobId: jobId }, generationHttpStatus(result.code))
-  // 持久化媒体资源引用（字节落盘留待真实图片模型接入时在此 put 到 MediaStorage）
+  // 持久化媒体：真实图片模型返回 base64 data URI，解码后落到 MediaStorage（本地 FS），DB 只存 url（不存大 data URI）。
+  const container = getContainer()
+  let url = result.data.assetUrl
+  const m = url.match(/^data:(image\/[^;]+);base64,(.+)$/s)
+  if (m) {
+    const bytes = Buffer.from(m[2], "base64")
+    const ext = (m[1].split("/")[1] || "png").split("+")[0]
+    const key = `${p.ctx.projectId}/${container.newId("img")}.${ext}`
+    const stored = await container.media.put({ key, body: bytes, contentType: m[1] })
+    url = stored.url
+  }
   const asset = await p.repos.media.create(p.ctx.projectId, p.ctx.workspaceId, {
     kind: "image",
-    url: result.data.assetUrl,
+    url,
     mimeType: result.data.mimeType,
     ratio: result.data.ratio,
   })

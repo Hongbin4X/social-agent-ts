@@ -24,7 +24,8 @@ export function mediaStorageFromEnv(env = process.env): MediaStorage {
     }
     return new S3MediaStorage(cfg)
   }
-  const baseDir = env.MEDIA_LOCAL_DIR ?? path.join(process.cwd(), ".media")
+  // 用 || 而非 ??：.env 里 MEDIA_LOCAL_DIR= 是空串（非 nullish），空串也应回退默认，否则会相对 cwd 落盘。
+  const baseDir = env.MEDIA_LOCAL_DIR || path.join(process.cwd(), ".media")
   const publicBase = `${(env.PUBLIC_BASE_URL ?? "http://localhost:8091").replace(/\/$/, "")}/media`
   return new LocalFsMediaStorage({ baseDir, publicBaseUrl: publicBase })
 }

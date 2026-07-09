@@ -6,6 +6,7 @@
 // 现在只放一个健康检查 + 一个占位 API，保证结构完整、可编译、可启动。真实路由后续在 src/routes 落地。
 
 import { Hono } from "hono"
+import { serveStatic } from "@hono/node-server/serve-static"
 import { CREDIT_COSTS } from "@social/shared"
 import { publishRoutes } from "./routes/publish"
 import { connectionRoutes } from "./routes/connections"
@@ -20,6 +21,13 @@ import { generateRoutes } from "./routes/generate"
 export const app = new Hono<AppEnv>()
 
 app.get("/health", (c) => c.json({ ok: true, service: "super-social-agent-server", stage: "P0-scaffold" }))
+
+// 本地媒体静态服务（LocalFsMediaStorage 落盘的图片，公开、无需鉴权）。落盘根 = cwd/.media。
+// /media/<proj>/<id>.jpg → 读 .media/<proj>/<id>.jpg。前端经 Next /media 反代同源访问。
+app.use(
+  "/media/*",
+  serveStatic({ root: "./.media", rewriteRequestPath: (path) => path.replace(/^\/media/, "") }),
+)
 
 // 占位：把共享的计费表暴露出来，证明 @social/shared 在前后端间已打通。真实计费预扣/回写接 GLBGPT 后再实现。
 app.get("/api/billing/credit-costs", (c) => c.json(CREDIT_COSTS))

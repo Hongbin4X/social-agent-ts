@@ -105,7 +105,14 @@ interface Store {
   startStudioFromPlan: (item: PlanItem) => void
   startStudioBlank: () => void
   generateCopy: () => void
-  generateImage: () => void
+  generateImage: (params: {
+    platform: Platform
+    format: string
+    hook: string
+    body: string
+    mediaAsset?: string
+    instruction?: string
+  }) => Promise<void>
   generateVariants: () => Promise<void>
   startManualVariants: () => void
   updateVariant: (platform: Platform, patch: Partial<PostVariant>) => void
@@ -453,11 +460,35 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     pushToast(translate("Copy generated. Actual credits: 7", "已生成文案。实际 credits：7"), "success")
   }, [profile, pushToast])
 
-  const generateImage = useCallback(() => {
-    setCredits((c) => c - 30)
-    setStudio((s) => ({ ...s, imageGenerated: true }))
-    pushToast(translate("Image generated. Actual credits: 28", "已生成图片。实际 credits：28"), "success")
-  }, [pushToast])
+  // 走后端真实图片模型（gemini image）：按当前变体的平台/格式/文案生成，落库并回填 mediaUrl 展示真图。
+  const generateImage = useCallback(
+    async (params: {
+      platform: Platform
+      format: string
+      hook: string
+      body: string
+      mediaAsset?: string
+      instruction?: string
+    }) => {
+      if (!activeProjectId) {
+        pushToast(translate("Select a project first", "请先选择项目"), "warn")
+        return
+      }
+      try {
+        const res = await api.generateImage({ projectId: activeProjectId, ...params })
+        setCredits((c) => c - res.credits)
+        setStudio((s) => ({
+          ...s,
+          imageGenerated: true,
+          variants: s.variants.map((v) => (v.platform === params.platform ? { ...v, mediaUrl: res.asset.url } : v)),
+        }))
+        pushToast(translate("Image generated (AI)", "已生成图片（AI）"), "success")
+      } catch (e) {
+        pushToast(translate("Image generation failed", "图片生成失败") + `: ${(e as Error).message}`, "warn")
+      }
+    },
+    [activeProjectId, pushToast],
+  )
 
   // 走后端真实 AI（gpt-5.3-chat）：品牌上下文 + 主题 + 平台 → 每平台定制变体。
   const generateVariants = useCallback(async () => {

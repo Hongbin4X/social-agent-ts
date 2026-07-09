@@ -383,7 +383,20 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
                       variant={current}
                       hasImage={studio.imageGenerated}
                       onCtaPreview={handleCtaPreview}
-                      onRegenerateImage={() => setPaid({ label: t("Regenerate image", "重新生成图片"), credits: 30, run: generateImage })}
+                      onRegenerateImage={() =>
+                        setPaid({
+                          label: t("Regenerate image", "重新生成图片"),
+                          credits: 30,
+                          run: () =>
+                            generateImage({
+                              platform: current.platform,
+                              format: current.format,
+                              hook: current.hook,
+                              body: current.body,
+                              mediaAsset: current.mediaAsset,
+                            }),
+                        })
+                      }
                       onEditImage={() => {
                         setImageEditPrompt("")
                         setImageEditOpen(true)
@@ -635,7 +648,15 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
               className="bg-brand text-brand-foreground hover:bg-brand/90"
               disabled={!imageEditPrompt.trim()}
               onClick={() => {
-                generateImage()
+                if (current)
+                  generateImage({
+                    platform: current.platform,
+                    format: current.format,
+                    hook: current.hook,
+                    body: current.body,
+                    mediaAsset: current.mediaAsset,
+                    instruction: imageEditPrompt,
+                  })
                 setImageEditOpen(false)
                 setImageEditPrompt("")
               }}

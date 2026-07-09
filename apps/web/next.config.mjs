@@ -12,7 +12,11 @@ const nextConfig = {
   // 同源，免 CORS、不暴露后端端口；联调改 SSA_BACKEND_URL 即可。
   async rewrites() {
     const backend = process.env.SSA_BACKEND_URL ?? "http://localhost:8091"
-    return [{ source: "/bff/:path*", destination: `${backend}/api/:path*` }]
+    return [
+      { source: "/bff/:path*", destination: `${backend}/api/:path*` },
+      // 媒体（本地 FS 落盘的图片）同源反代到后端静态服务。
+      { source: "/media/:path*", destination: `${backend}/media/:path*` },
+    ]
   },
   images: {
     // 原型阶段不走 Next 图片优化（大量 mock 图 + 占位图）。

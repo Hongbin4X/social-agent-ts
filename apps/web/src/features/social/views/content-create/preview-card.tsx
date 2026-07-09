@@ -59,10 +59,20 @@ export function PreviewCard({
             className="relative mt-3 flex items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-xs text-muted-foreground"
             style={{ aspectRatio: ratio.replace(":", "/") }}
           >
-            <span className="flex items-center">
-              <ImageIcon className="mr-1.5 size-4" />
-              {hasImage ? `${variant.mediaAsset} · ${ratio}` : `${variant.mediaAsset} ${t("placeholder", "占位图")} · ${ratio}`}
-            </span>
+            {variant.mediaUrl ? (
+              // 真实生成的图片（本地 FS 经 /media 反代）。用户内容动态 URL，用原生 img。
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={variant.mediaUrl}
+                alt={t("Generated image", "生成的图片")}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : (
+              <span className="flex items-center">
+                <ImageIcon className="mr-1.5 size-4" />
+                {hasImage ? `${variant.mediaAsset} · ${ratio}` : `${variant.mediaAsset} ${t("placeholder", "占位图")} · ${ratio}`}
+              </span>
+            )}
             {onRegenerateImage || onEditImage ? (
               <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
                 {onRegenerateImage ? (

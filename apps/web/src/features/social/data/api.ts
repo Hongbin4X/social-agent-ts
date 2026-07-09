@@ -91,6 +91,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  generateImage: (input: {
+    projectId: string
+    platform: Platform
+    format: string
+    hook: string
+    body: string
+    mediaAsset?: string
+    instruction?: string
+  }) =>
+    req<{ asset: { id: string; url: string; mimeType: string; ratio: string }; credits: number; generationJobId: string }>(
+      "/generate/image",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
   generateProfileDraft: (projectId: string, websiteUrl: string) =>
     req<{ patch: Partial<BrandProfile>; credits: number }>("/generate/profile-draft", {
       method: "POST",

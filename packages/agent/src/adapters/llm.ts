@@ -201,19 +201,33 @@ export class LlmContentGenerator implements ContentGenerator, UsageReporting {
       .filter((l) => l !== "")
       .join(" ")
 
-    const res = await this.fetchImpl(`${this.base}/images/generations`, {
+    // 网关的 Gemini 图像模型（*-image-preview）走 /chat/completions，图片以 data URI
+    // （markdown `![](data:image/...;base64,...)` 或裸 data URI）内联在 message.content，
+    // 不走 OpenAI 的 /images/generations（那个会 500 "not supported model for image generation"）。
+    this.pendingUsage = undefined
+    const res = await this.fetchImpl(`${this.base}/chat/completions`, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify({ model: this.config.imageModel, prompt, size: sizeFromRatio(ratio) }),
+      body: JSON.stringify({
+        model: this.config.imageModel,
+        messages: [{ role: "user", content: prompt }],
+      }),
     })
     await this.assertOk(res, "generateImage")
-    const data = (await res.json()) as {
-      data?: Array<{ url?: string; b64_json?: string }>
+    const data = (await res.json()) as ChatCompletionResponse
+    if (data.usage) {
+      this.pendingUsage = {
+        model: this.config.imageModel,
+        vendor: "glbgpt",
+        requestTokens: data.usage.prompt_tokens ?? 0,
+        responseTokens: data.usage.completion_tokens ?? 0,
+      }
     }
-    const first = data.data?.[0]
-    const assetUrl = first?.url ?? (first?.b64_json ? `data:image/png;base64,${first.b64_json}` : "")
-    if (!assetUrl) throw new GeneratorError("model_error", "图片端点返回缺少 url / b64_json")
-    return { assetUrl, mimeType: "image/png", ratio }
+    const content = data.choices?.[0]?.message?.content ?? ""
+    const dataUri = extractImageDataUri(content)
+    if (!dataUri) throw new GeneratorError("model_error", `图片模型未返回图片数据: ${content.slice(0, 120)}`)
+    const mimeType = dataUri.slice(5, dataUri.indexOf(";")) || "image/png"
+    return { assetUrl: dataUri, mimeType, ratio }
   }
 
   async generateRecommendations(
@@ -361,6 +375,14 @@ function parseJsonContent<T>(content: string): T {
   } catch {
     throw new GeneratorError("model_error", `模型返回不是合法 JSON: ${text.slice(0, 200)}`)
   }
+}
+
+/** 从 chat 返回的 content 里抽出图片 data URI：优先 markdown ![](data:...)，退化到裸 data URI。 */
+function extractImageDataUri(content: string): string | null {
+  const md = content.match(/!\[[^\]]*\]\((data:image\/[^)]+)\)/)
+  if (md) return md[1]
+  const bare = content.match(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/)
+  return bare ? bare[0] : null
 }
 
 function sanitizePlatforms(raw: string[] | undefined, allowed: Platform[]): Platform[] {
