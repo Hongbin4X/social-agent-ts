@@ -43,6 +43,7 @@
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-muted: var(--brand-muted);
+  --color-brand-muted-foreground: var(--brand-muted-foreground);
   --color-upgrade: var(--upgrade);
   --color-upgrade-foreground: var(--upgrade-foreground);
   --color-status-draft: var(--status-draft);
@@ -91,7 +92,11 @@
   --radius: 0.5rem;
   --brand: oklch(0.55 0.22 285);
   --brand-foreground: oklch(0.985 0 0);
-  --brand-muted: oklch(0.95 0.03 285);
+  /* 选中态高亮底色（用户指定 #F0EDFF，2026-07-09）。品牌淡色底恒为浅紫、不随主题翻转，
+     并恒配深紫前景 --brand-muted-foreground——「浅底 + 深字」在浅色/深色主题下都清晰。
+     历史坑：曾用 text-foreground 做选中态字色，深色主题下翻成白色，浅底白字看不清。 */
+  --brand-muted: #F0EDFF;
+  --brand-muted-foreground: oklch(0.36 0.15 285);
   --upgrade: oklch(0.85 0.13 85);
   --upgrade-foreground: oklch(0.25 0.05 70);
   --status-draft: oklch(0.6 0 0);
@@ -129,9 +134,9 @@
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  /* 深色主题必须加深品牌淡色调：light 值(0.95 近白)在深色下配 text-foreground(0.985 白)/text-brand 会看不清。
-     这是所有选中态高亮(bg-brand-muted)与品牌标签共用的令牌，改这一处即全站修复；深紫底配白字对比充足。 */
-  --brand-muted: oklch(0.32 0.09 285);
+  /* 品牌淡色底与其前景色恒定（见 :root），深色主题不再翻转：浅紫底 #F0EDFF + 深紫字，
+     彻底避免此前「深色下 text-foreground 翻白、浅底白字看不清」。--brand-muted-foreground 不在此覆盖，沿用 :root。 */
+  --brand-muted: #F0EDFF;
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
@@ -168,8 +173,8 @@
     --muted-foreground: oklch(0.708 0 0);
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
-    /* 同 .dark：深色主题加深品牌淡色调，修复选中态高亮(bg-brand-muted)看不清文字的问题。 */
-    --brand-muted: oklch(0.32 0.09 285);
+    /* 同 .dark：品牌淡色底恒定为浅紫 #F0EDFF + 深紫字（见 :root），不随主题翻转。 */
+    --brand-muted: #F0EDFF;
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);

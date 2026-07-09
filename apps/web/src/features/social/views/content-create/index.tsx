@@ -116,8 +116,10 @@ function BigActionCard({
         <Icon className="size-5" />
       </span>
       <div>
-        <p className="text-base font-semibold text-foreground">{title}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        {/* 强调卡底色为浅紫 brand-muted：文字需用恒定深紫 brand-muted-foreground，
+            否则深色主题下 text-foreground 翻白、浅底白字看不清。 */}
+        <p className={cn("text-base font-semibold", accent ? "text-brand-muted-foreground" : "text-foreground")}>{title}</p>
+        <p className={cn("mt-1 text-sm", accent ? "text-brand-muted-foreground/80" : "text-muted-foreground")}>{description}</p>
       </div>
       <span className={cn("mt-auto inline-flex items-center gap-1.5 text-sm font-medium", accent ? "text-brand" : "text-foreground")}>
         {cta}
