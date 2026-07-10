@@ -555,20 +555,47 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
   // 二次修改：把库内帖子灌回 studio。记 editingPostId 让存回走「更新同一条」。
   // copyGenerated=true（已有文案，直接进编辑窗口而非重新生成）；imageGenerated 按是否已有 ready 配图槽 / hasImage 派生。
-  const startStudioFromPost = useCallback((post: SocialPost) => {
-    const hasReadyImage =
-      post.hasImage || post.variants.some((v) => (v.imageSlots ?? []).some((sl) => sl.status === "ready"))
-    setStudio({
-      editingPostId: post.id,
-      topic: post.title,
-      platforms: post.platforms,
-      copyGenerated: true,
-      imageGenerated: hasReadyImage,
-      // 拷贝一份，避免编辑态直接改到 posts 列表里的同一引用。
-      variants: post.variants.map((v) => ({ ...v, imageSlots: v.imageSlots ? v.imageSlots.map((s) => ({ ...s })) : v.imageSlots })),
-    })
-    setAgentTab("Content Create")
-  }, [])
+  //
+  // 已排期帖子（Scheduled/ManualFallback）的「撤回草稿再改」：点击二次修改的瞬间就把它从排期撤下——
+  // 帖子回到 Ready、删掉日历项。理由（用户拍板）：编辑期间它必须不在发布队列里，否则到点会自动投递出半成品/非预期内容。
+  // 先同步 setStudio 让编辑弹窗立刻带内容打开，再异步做撤回（不阻塞开窗）。
+  const startStudioFromPost = useCallback(
+    (post: SocialPost) => {
+      const hasReadyImage =
+        post.hasImage || post.variants.some((v) => (v.imageSlots ?? []).some((sl) => sl.status === "ready"))
+      setStudio({
+        editingPostId: post.id,
+        topic: post.title,
+        platforms: post.platforms,
+        copyGenerated: true,
+        imageGenerated: hasReadyImage,
+        // 拷贝一份，避免编辑态直接改到 posts 列表里的同一引用。
+        variants: post.variants.map((v) => ({ ...v, imageSlots: v.imageSlots ? v.imageSlots.map((s) => ({ ...s })) : v.imageSlots })),
+      })
+      setAgentTab("Content Create")
+
+      // 已排期 → 撤回草稿（去队列）。仅对 Scheduled/ManualFallback 生效；Ready/Draft 本就没排期，跳过。
+      const isScheduled = post.status === "Scheduled" || post.status === "ManualFallback"
+      if (isScheduled && activeProjectId) {
+        // 乐观更新本地：帖子回 Ready、日历移除该帖排期。
+        setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, status: "Ready", updatedAt: "Just now" } : p)))
+        setCalendar((prev) => prev.filter((c) => c.postId !== post.id))
+        ;(async () => {
+          try {
+            await api.updatePost(post.id, { status: "Ready" })
+            await api.deleteCalendarByPost(post.id, activeProjectId)
+          } catch (e) {
+            // 撤回失败要明确告知：此时它可能仍在发布队列里，风险实在，绝不静默。
+            pushToast(
+              translate(`Unschedule failed: ${(e as Error).message}`, `撤回排期失败：${(e as Error).message}`),
+              "warn",
+            )
+          }
+        })()
+      }
+    },
+    [activeProjectId, pushToast],
+  )
 
   const generateCopy = useCallback(() => {
     setCredits((c) => c - 8)
@@ -1022,6 +1049,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       try {
         await api.deletePost(postId, activeProjectId)
         setPosts((prev) => prev.filter((p) => p.id !== postId))
+        // 后端已级联删该帖子的日历项/子任务；本地日历状态也同步移除，避免日历视图残留空排期。
+        setCalendar((prev) => prev.filter((c) => c.postId !== postId))
         pushToast(translate("Deleted", "已删除"), "default")
       } catch (e) {
         pushToast(translate(`Delete failed: ${(e as Error).message}`, `删除失败：${(e as Error).message}`), "warn")

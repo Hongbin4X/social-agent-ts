@@ -108,6 +108,9 @@ export const api = {
     id: string,
     input: { projectId: string; itemStatus?: string; jobs: CalendarItem["variants"] },
   ) => req<{ item: CalendarItem }>(`/calendar/${id}/jobs`, { method: "PATCH", body: JSON.stringify(input) }),
+  // 按 postId 删排期（二次修改已排期帖子「撤回草稿」用；帖子保留，只清日历）。
+  deleteCalendarByPost: (postId: string, projectId: string) =>
+    req<{ ok: boolean }>(`/calendar/by-post/${postId}`, { method: "DELETE", body: JSON.stringify({ projectId }) }),
 
   // generation
   generateVariants: (input: { projectId: string } & Omit<GenerateVariantsInput, "brand">) =>

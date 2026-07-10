@@ -84,5 +84,7 @@ postRoutes.delete("/:id", async (c) => {
   const project = await projectInWorkspace(workspace.id, body.projectId)
   if (!project) return c.json({ error: "not_found", message: "project 不属于你" }, 404)
   await repos.posts.delete(id, body.projectId)
+  // 级联清理排期：已排期帖子删掉后，它的日历项/子任务必须一并删，否则到点会空发一条不存在的帖子。
+  await repos.calendar.deleteByPostId(body.projectId, id)
   return c.json({ ok: true })
 })

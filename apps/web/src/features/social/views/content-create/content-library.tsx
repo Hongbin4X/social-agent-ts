@@ -13,9 +13,12 @@ import { cn } from "@/lib/utils"
 import { Archive, CheckSquare, CircleCheck, ListFilter, PencilLine, RefreshCw, Send, Square, Trash2 } from "lucide-react"
 
 /* ---------- content library ---------- */
-// 「未发表草稿」= 可二次修改 / 可删除的作用面（用户拍板仅这两态）。已排期/已发/失败等不在其中。
-const EDITABLE_STATUSES: PostStatus[] = ["Draft", "Ready"]
+// 可二次修改 / 可删除的作用面：未发表草稿(Draft/Ready) + 已排期(Scheduled/ManualFallback)。
+// 已发布(Published/ManuallyPublished)、发布中(Publishing)、失败/取消不在其中。
+// 已排期帖子的删除会级联清日历项；二次修改会先撤回排期(回 Ready 草稿)——见 store.startStudioFromPost。
+const EDITABLE_STATUSES: PostStatus[] = ["Draft", "Ready", "Scheduled", "ManualFallback"]
 const isEditableDraft = (s: PostStatus) => EDITABLE_STATUSES.includes(s)
+const isScheduledStatus = (s: PostStatus) => s === "Scheduled" || s === "ManualFallback"
 const FILTERS: { label: string; value: PostStatus | "All" }[] = [
   { label: "All", value: "All" },
   { label: "Ready", value: "Ready" },
@@ -117,13 +120,18 @@ export function ContentLibrary({ onEditPost }: { onEditPost: (post: SocialPost) 
       <Modal
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
-        title={t("Delete draft?", "删除草稿？")}
+        title={t("Delete post?", "删除帖子？")}
         description={
           confirmDelete
-            ? t(
-                `“${confirmDelete.title}” will be permanently removed. This cannot be undone.`,
-                `“${confirmDelete.title}” 将被永久删除，此操作不可恢复。`,
-              )
+            ? isScheduledStatus(confirmDelete.status)
+              ? t(
+                  `“${confirmDelete.title}” is scheduled. Deleting it also cancels its schedule. This cannot be undone.`,
+                  `“${confirmDelete.title}” 已排期，删除会一并撤销它的排期。此操作不可恢复。`,
+                )
+              : t(
+                  `“${confirmDelete.title}” will be permanently removed. This cannot be undone.`,
+                  `“${confirmDelete.title}” 将被永久删除，此操作不可恢复。`,
+                )
             : undefined
         }
         footer={

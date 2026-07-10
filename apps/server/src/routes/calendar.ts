@@ -43,6 +43,18 @@ calendarRoutes.post("/", async (c) => {
   return c.json({ item }, 201)
 })
 
+// 按 postId 删除该帖子的排期（二次修改已排期帖子时「撤回草稿」用：只清日历，帖子保留）。
+calendarRoutes.delete("/by-post/:postId", async (c) => {
+  const { workspace, repos } = await currentWorkspace(c)
+  if (!workspace) return c.json({ error: "not_found", message: "工作区不存在" }, 404)
+  const body = (await c.req.json<{ projectId?: string }>().catch(() => ({}))) as { projectId?: string }
+  if (!body.projectId) return c.json({ error: "invalid_request", message: "projectId 必填" }, 400)
+  const project = await projectInWorkspace(workspace.id, body.projectId)
+  if (!project) return c.json({ error: "not_found", message: "project 不属于你" }, 404)
+  await repos.calendar.deleteByPostId(body.projectId, c.req.param("postId"))
+  return c.json({ ok: true })
+})
+
 // 改日历任务本身（改期 / 取消 / 状态流转）
 calendarRoutes.patch("/:id", async (c) => {
   const { workspace, repos } = await currentWorkspace(c)

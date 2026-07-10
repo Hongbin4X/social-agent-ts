@@ -39,6 +39,8 @@ export interface CalendarRepo {
   ): Promise<CalendarItem>
   update(id: string, patch: CalendarItemPatch): Promise<void>
   updateJobs(calendarItemId: string, projectId: string, jobsPatch: CalendarJobPatch[]): Promise<void>
+  /** 按 postId 硬删除该帖子的所有日历项 + 子任务（删除/二次修改已排期帖子时的级联清理，防到点空发）。 */
+  deleteByPostId(projectId: string, postId: string): Promise<void>
 }
 
 type CalendarItemRow = typeof ssaCalendarItem.$inferSelect
@@ -126,6 +128,23 @@ export class DrizzleCalendarRepo implements CalendarRepo {
     if (Object.keys(patch).length === 0) return
     // CalendarItemPatch 键与列名一一对应。
     await this.db.update(ssaCalendarItem).set(patch).where(eq(ssaCalendarItem.id, id))
+  }
+
+  async deleteByPostId(projectId: string, postId: string): Promise<void> {
+    // 先查出该帖子(项目内)的所有日历项 id，删掉它们的子任务，再删日历项本身。
+    // 项目级隔离：全程带 projectId，越权(postId 对但 projectId 不对)删不动别人的排期。
+    const items = await this.db
+      .select({ id: ssaCalendarItem.id })
+      .from(ssaCalendarItem)
+      .where(and(eq(ssaCalendarItem.projectId, projectId), eq(ssaCalendarItem.postId, postId)))
+    if (items.length === 0) return
+    const ids = items.map((i) => i.id)
+    await this.db
+      .delete(ssaCalendarJob)
+      .where(and(eq(ssaCalendarJob.projectId, projectId), inArray(ssaCalendarJob.calendarItemId, ids)))
+    await this.db
+      .delete(ssaCalendarItem)
+      .where(and(eq(ssaCalendarItem.projectId, projectId), eq(ssaCalendarItem.postId, postId)))
   }
 
   async updateJobs(
