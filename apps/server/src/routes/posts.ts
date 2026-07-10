@@ -46,10 +46,43 @@ postRoutes.get("/:id", async (c) => {
   return c.json({ post })
 })
 
+// 更新帖子。两类调用:
+//   1) 仅改状态(归档/排期/标记已发布等)—— body 只有 status,不带 projectId,保持向后兼容,不强制归属校验。
+//   2) 二次修改草稿存回 —— body 带 projectId + variants,则在校验归属后既更新帖子字段、又整替变体。
 postRoutes.patch("/:id", async (c) => {
-  const { repos } = getContainer()
-  const patch = await c.req.json<Record<string, unknown>>().catch(() => ({}))
-  await repos.posts.update(c.req.param("id"), patch)
-  const post = await repos.posts.getById(c.req.param("id"))
+  const { workspace, repos } = await currentWorkspace(c)
+  if (!workspace) return c.json({ error: "not_found", message: "先创建工作区" }, 404)
+  const id = c.req.param("id")
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({}))
+  const { projectId, variants, ...patch } = body as {
+    projectId?: string
+    variants?: PostVariant[]
+    [k: string]: unknown
+  }
+  // 带 projectId 时校验归属(二次修改必带);越权直接 404。
+  if (projectId) {
+    const project = await projectInWorkspace(workspace.id, projectId)
+    if (!project) return c.json({ error: "not_found", message: "project 不属于你" }, 404)
+  }
+  await repos.posts.update(id, patch)
+  // 只有在拿到 projectId(已校验归属)且显式传了 variants 时才整替，避免误清空变体。
+  if (projectId && Array.isArray(variants)) {
+    await repos.posts.replaceVariants(id, projectId, variants)
+  }
+  const post = await repos.posts.getById(id)
   return c.json({ post })
+})
+
+// 硬删除帖子(仅用于未发布草稿的删除;前端已限定作用面并二次确认)。
+// body 带 projectId 做归属校验 + 项目级删除,双保险防越权删他人帖子。
+postRoutes.delete("/:id", async (c) => {
+  const { workspace, repos } = await currentWorkspace(c)
+  if (!workspace) return c.json({ error: "not_found", message: "先创建工作区" }, 404)
+  const id = c.req.param("id")
+  const body = (await c.req.json<{ projectId?: string }>().catch(() => ({}))) as { projectId?: string }
+  if (!body.projectId) return c.json({ error: "invalid_request", message: "projectId 必填" }, 400)
+  const project = await projectInWorkspace(workspace.id, body.projectId)
+  if (!project) return c.json({ error: "not_found", message: "project 不属于你" }, 404)
+  await repos.posts.delete(id, body.projectId)
+  return c.json({ ok: true })
 })

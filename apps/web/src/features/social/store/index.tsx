@@ -47,6 +47,9 @@ export type CreateIntent = "post" | "plan" | null
 
 export interface StudioDraft {
   sourcePlanId?: string
+  // 二次修改时记住正在编辑的那条库内帖子 id：存回走「更新同一条」而非「新建副本」（避免制造重复入库）。
+  // 空 = 全新草稿，存库走新建。
+  editingPostId?: string
   topic: string
   platforms: Platform[]
   copyGenerated: boolean
@@ -104,6 +107,8 @@ interface Store {
 
   studio: StudioDraft
   startStudioFromPlan: (item: PlanItem) => void
+  // 从库内已存帖子把内容灌回 studio 做二次修改（存回更新同一条）。
+  startStudioFromPost: (post: SocialPost) => void
   startStudioBlank: () => void
   generateCopy: () => void
   generateImage: (params: {
@@ -128,6 +133,8 @@ interface Store {
   markManuallyPublished: (postId: string) => void
   retryFailed: (postId: string) => void
   archivePost: (postId: string) => void
+  // 硬删除草稿（不可恢复；UI 侧已限定作用面并二次确认）。
+  deletePost: (postId: string) => void
 
   calendar: CalendarItem[]
   addStudioToCalendar: (date?: string, time?: string) => void
@@ -546,6 +553,23 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     setAgentTab("Content Create")
   }, [])
 
+  // 二次修改：把库内帖子灌回 studio。记 editingPostId 让存回走「更新同一条」。
+  // copyGenerated=true（已有文案，直接进编辑窗口而非重新生成）；imageGenerated 按是否已有 ready 配图槽 / hasImage 派生。
+  const startStudioFromPost = useCallback((post: SocialPost) => {
+    const hasReadyImage =
+      post.hasImage || post.variants.some((v) => (v.imageSlots ?? []).some((sl) => sl.status === "ready"))
+    setStudio({
+      editingPostId: post.id,
+      topic: post.title,
+      platforms: post.platforms,
+      copyGenerated: true,
+      imageGenerated: hasReadyImage,
+      // 拷贝一份，避免编辑态直接改到 posts 列表里的同一引用。
+      variants: post.variants.map((v) => ({ ...v, imageSlots: v.imageSlots ? v.imageSlots.map((s) => ({ ...s })) : v.imageSlots })),
+    })
+    setAgentTab("Content Create")
+  }, [])
+
   const generateCopy = useCallback(() => {
     setCredits((c) => c - 8)
     setStudio((s) => ({
@@ -715,16 +739,28 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         ? { ...v, imageSlots: v.imageSlots.map((sl) => (sl.status === "generating" ? { ...sl, status: "empty" as const } : sl)) }
         : v,
     )
+    const fields = {
+      title: studio.topic || "Untitled topic",
+      platforms: studio.platforms,
+      assetType: hasReadyImage ? "Copy + image" : "Copy",
+      status: "Ready",
+      hasImage: hasReadyImage,
+    }
     try {
-      const { post } = await api.savePost({
-        projectId: activeProjectId,
-        title: studio.topic || "Untitled topic",
-        platforms: studio.platforms,
-        assetType: hasReadyImage ? "Copy + image" : "Copy",
-        status: "Ready",
-        hasImage: hasReadyImage,
-        variants: variantsToSave,
-      })
+      // 二次修改：存回更新同一条（PATCH 带 projectId + variants → 后端整替变体），替换列表里的那条，不新建副本。
+      if (studio.editingPostId) {
+        const { post } = await api.updatePost(studio.editingPostId, {
+          projectId: activeProjectId,
+          ...fields,
+          variants: variantsToSave,
+        })
+        setPosts((prev) => prev.map((p) => (p.id === post.id ? post : p)))
+        // 存回完成即退出编辑态，避免下次全新草稿误更到这条上。
+        setStudio((s) => ({ ...s, editingPostId: undefined }))
+        pushToast(translate("Draft updated", "草稿已更新"), "success")
+        return post
+      }
+      const { post } = await api.savePost({ projectId: activeProjectId, ...fields, variants: variantsToSave })
       setPosts((prev) => [post, ...prev])
       pushToast(translate("Saved to Content Library", "已保存到内容库"), "success")
       return post
@@ -732,7 +768,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       pushToast(translate(`Save failed: ${(e as Error).message}`, `保存失败：${(e as Error).message}`), "warn")
       return null
     }
-  }, [activeProjectId, studio.topic, studio.platforms, studio.variants, studio.imageGenerated, profile, pushToast])
+  }, [activeProjectId, studio.editingPostId, studio.topic, studio.platforms, studio.variants, studio.imageGenerated, profile, pushToast])
 
   const addStudioToCalendar = useCallback(
     async (date = "Wed Jul 8", time = "09:00") => {
@@ -976,6 +1012,24 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     [pushToast],
   )
 
+  // 硬删除草稿：调后端 DELETE（项目级隔离），成功后从本地列表移除。作用面/二次确认在 UI 层保证。
+  const deletePost = useCallback(
+    async (postId: string) => {
+      if (!activeProjectId) {
+        pushToast(translate("Select a project first", "请先选择项目"), "warn")
+        return
+      }
+      try {
+        await api.deletePost(postId, activeProjectId)
+        setPosts((prev) => prev.filter((p) => p.id !== postId))
+        pushToast(translate("Deleted", "已删除"), "default")
+      } catch (e) {
+        pushToast(translate(`Delete failed: ${(e as Error).message}`, `删除失败：${(e as Error).message}`), "warn")
+      }
+    },
+    [activeProjectId, pushToast],
+  )
+
   const addManualAccount = useCallback(
     async (a: Omit<Account, "id" | "status" | "type">) => {
       try {
@@ -1071,6 +1125,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       addPlanItemToCalendar,
       studio,
       startStudioFromPlan,
+      startStudioFromPost,
       startStudioBlank,
       generateCopy,
       generateImage,
@@ -1084,6 +1139,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       markManuallyPublished,
       retryFailed,
       archivePost,
+      deletePost,
       calendar,
       addStudioToCalendar,
       schedulePost,
@@ -1126,6 +1182,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       addPlanItemToCalendar,
       studio,
       startStudioFromPlan,
+      startStudioFromPost,
       startStudioBlank,
       generateCopy,
       generateImage,
@@ -1139,6 +1196,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       markManuallyPublished,
       retryFailed,
       archivePost,
+      deletePost,
       calendar,
       addStudioToCalendar,
       schedulePost,

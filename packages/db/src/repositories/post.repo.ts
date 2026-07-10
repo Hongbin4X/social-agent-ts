@@ -29,6 +29,8 @@ export interface PostRepo {
   create(projectId: string, workspaceId: string, post: PostInput): Promise<SocialPost>
   update(id: string, patch: PostPatch): Promise<void>
   replaceVariants(postId: string, projectId: string, variants: PostVariant[]): Promise<void>
+  /** 硬删除:连同变体一起删。项目级隔离——只删本项目下的这条,越权(id 对但 projectId 不对)时是 no-op。 */
+  delete(id: string, projectId: string): Promise<void>
 }
 
 type PostRow = typeof ssaPost.$inferSelect
@@ -111,6 +113,15 @@ export class DrizzlePostRepo implements PostRepo {
       .delete(ssaPostVariant)
       .where(and(eq(ssaPostVariant.postId, postId), eq(ssaPostVariant.projectId, projectId)))
     await this.insertVariants(postId, projectId, variants)
+  }
+
+  async delete(id: string, projectId: string): Promise<void> {
+    // 先删变体行(image_slots 以 JSON 存在变体行内，随之一并没了)，再删帖子行。
+    // 两处都带 projectId：即便调用方传对了 id、但 projectId 不是这条帖子真正所属项目，也删不动别人的数据。
+    await this.db
+      .delete(ssaPostVariant)
+      .where(and(eq(ssaPostVariant.postId, id), eq(ssaPostVariant.projectId, projectId)))
+    await this.db.delete(ssaPost).where(and(eq(ssaPost.id, id), eq(ssaPost.projectId, projectId)))
   }
 
   private async insertVariants(

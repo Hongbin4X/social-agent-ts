@@ -10,14 +10,17 @@ import { PlanWizard } from "./plan-wizard"
 import { ContentLibrary } from "./content-library"
 
 export function ContentCreateTab() {
-  const { createIntent, setCreateIntent, startStudioBlank, startStudioFromPlan } = useSocial()
+  const { createIntent, setCreateIntent, startStudioBlank, startStudioFromPlan, startStudioFromPost } = useSocial()
   const { t } = useLang()
   const [createOpen, setCreateOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
+  // wizard 打开时停在哪一步：全新创作 0（草稿），二次修改 1（=STEP 2 编辑窗口）。
+  const [wizardStep, setWizardStep] = useState<0 | 1 | 2>(0)
 
   useEffect(() => {
     if (createIntent === "post") {
       startStudioBlank()
+      setWizardStep(0)
       setCreateOpen(true)
       setCreateIntent(null)
     } else if (createIntent === "plan") {
@@ -25,6 +28,13 @@ export function ContentCreateTab() {
       setCreateIntent(null)
     }
   }, [createIntent, startStudioBlank, setCreateIntent])
+
+  // 内容库「二次修改」：灌回 studio → 以编辑窗口(Step 2)打开 wizard。
+  const handleEditPost = (post: Parameters<typeof startStudioFromPost>[0]) => {
+    startStudioFromPost(post)
+    setWizardStep(1)
+    setCreateOpen(true)
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 p-6">
@@ -51,6 +61,7 @@ export function ContentCreateTab() {
           accent
           onClick={() => {
             startStudioBlank()
+            setWizardStep(0)
             setCreateOpen(true)
           }}
         />
@@ -67,14 +78,15 @@ export function ContentCreateTab() {
       </div>
 
       {/* content library */}
-      <ContentLibrary />
+      <ContentLibrary onEditPost={handleEditPost} />
 
-      <CreatePostWizard open={createOpen} onClose={() => setCreateOpen(false)} />
+      <CreatePostWizard open={createOpen} onClose={() => setCreateOpen(false)} initialStep={wizardStep} />
       <PlanWizard
         open={planOpen}
         onClose={() => setPlanOpen(false)}
         onOpenComposer={(item) => {
           startStudioFromPlan(item)
+          setWizardStep(0)
           setPlanOpen(false)
           setCreateOpen(true)
         }}

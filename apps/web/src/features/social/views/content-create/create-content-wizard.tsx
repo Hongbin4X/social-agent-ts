@@ -43,7 +43,16 @@ const WIZARD_STEP_ZH: Record<(typeof WIZARD_STEPS)[number], string> = {
   Schedule: "排期",
 }
 
-export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CreatePostWizard({
+  open,
+  onClose,
+  initialStep = 0,
+}: {
+  open: boolean
+  onClose: () => void
+  // 打开时停在哪一步。二次修改传 1（=STEP 2 编辑窗口）；全新创作用默认 0。
+  initialStep?: 0 | 1 | 2
+}) {
   const {
     studio,
     accounts,
@@ -82,12 +91,22 @@ export function CreatePostWizard({ open, onClose }: { open: boolean; onClose: ()
 
   useEffect(() => {
     if (open) {
-      setStep(0)
+      setStep(initialStep)
       setCreationMethod("agent")
-      setActiveVariant(null)
       setScheduleMode("now")
       setGenerating(false)
+      if (initialStep === 1) {
+        // 二次修改直达编辑窗口：激活首个平台让 current 解析到；按已有内容推导 genModes，
+        // 有配图槽则含 image，保证配图槽面板(genModes.includes("image") 才显示)可见、可继续改图。
+        setActiveVariant(studio.platforms[0] ?? null)
+        const hasImageSlots = studio.variants.some((v) => (v.imageSlots ?? []).length > 0)
+        setGenModes(hasImageSlots ? ["copy", "image"] : ["copy"])
+      } else {
+        setActiveVariant(null)
+      }
     }
+    // studio/initialStep 只在 open 由 false→true 的那一刻读取（此时 studio 已由调用方灌好），故意不进依赖数组。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const variants = studio.variants

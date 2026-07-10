@@ -4,15 +4,18 @@ import { useMemo, useState } from "react"
 import { useSocial } from "@/features/social/store"
 import { type Platform, type PostStatus, type SocialPost } from "@social/shared"
 import { Button } from "@/components/ui/button"
-import { Card, PlatformBadge, StatusBadge } from "@/features/social/components/ui"
+import { Card, Modal, PlatformBadge, StatusBadge } from "@/features/social/components/ui"
 import { BatchPublishModal } from "@/features/social/components/batch-publish"
 import { PlatformPreviewModal } from "./platform-preview-modal"
 import { useLang } from "@/features/social/i18n"
 import { STATUS_LABELS } from "@/features/social/i18n/labels"
 import { cn } from "@/lib/utils"
-import { Archive, CheckSquare, CircleCheck, ListFilter, RefreshCw, Send, Square } from "lucide-react"
+import { Archive, CheckSquare, CircleCheck, ListFilter, PencilLine, RefreshCw, Send, Square, Trash2 } from "lucide-react"
 
 /* ---------- content library ---------- */
+// 「未发表草稿」= 可二次修改 / 可删除的作用面（用户拍板仅这两态）。已排期/已发/失败等不在其中。
+const EDITABLE_STATUSES: PostStatus[] = ["Draft", "Ready"]
+const isEditableDraft = (s: PostStatus) => EDITABLE_STATUSES.includes(s)
 const FILTERS: { label: string; value: PostStatus | "All" }[] = [
   { label: "All", value: "All" },
   { label: "Ready", value: "Ready" },
@@ -22,14 +25,16 @@ const FILTERS: { label: string; value: PostStatus | "All" }[] = [
   { label: "Published", value: "Published" },
 ]
 
-export function ContentLibrary() {
-  const { posts, markManuallyPublished, retryFailed, archivePost, schedulePost } = useSocial()
+export function ContentLibrary({ onEditPost }: { onEditPost: (post: SocialPost) => void }) {
+  const { posts, markManuallyPublished, retryFailed, archivePost, deletePost, schedulePost } = useSocial()
   const { t, te } = useLang()
   const [filter, setFilter] = useState<PostStatus | "All">("All")
   const [selected, setSelected] = useState<string[]>([])
   const [batchOpen, setBatchOpen] = useState(false)
   // 平台预览弹窗：点击某行某平台图标时，记下 {帖子, 平台} 打开预览。
   const [preview, setPreview] = useState<{ post: SocialPost; platform: Platform } | null>(null)
+  // 删除二次确认：记下待删的帖子，确认后才真删（硬删不可逆）。
+  const [confirmDelete, setConfirmDelete] = useState<SocialPost | null>(null)
 
   const visible = useMemo(
     () => posts.filter((p) => p.status !== "Archived" && (filter === "All" || p.status === filter)),
@@ -81,6 +86,8 @@ export function ContentLibrary() {
               onRetry={() => retryFailed(post.id)}
               onArchive={() => archivePost(post.id)}
               onSchedule={() => schedulePost(post)}
+              onEdit={() => onEditPost(post)}
+              onDelete={() => setConfirmDelete(post)}
               onPreview={(platform) => setPreview({ post, platform })}
             />
           ))
@@ -105,6 +112,39 @@ export function ContentLibrary() {
         initialPlatform={preview?.platform ?? null}
         onClose={() => setPreview(null)}
       />
+
+      {/* 删除二次确认：硬删不可逆，明确提示 */}
+      <Modal
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        title={t("Delete draft?", "删除草稿？")}
+        description={
+          confirmDelete
+            ? t(
+                `“${confirmDelete.title}” will be permanently removed. This cannot be undone.`,
+                `“${confirmDelete.title}” 将被永久删除，此操作不可恢复。`,
+              )
+            : undefined
+        }
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setConfirmDelete(null)}>
+              {t("Cancel", "取消")}
+            </Button>
+            <Button
+              size="sm"
+              className="bg-status-failed text-white hover:bg-status-failed/90"
+              onClick={() => {
+                if (confirmDelete) deletePost(confirmDelete.id)
+                setConfirmDelete(null)
+              }}
+            >
+              <Trash2 className="size-3.5" />
+              {t("Delete", "删除")}
+            </Button>
+          </div>
+        }
+      />
     </Card>
   )
 }
@@ -117,6 +157,8 @@ function LibraryRow({
   onRetry,
   onArchive,
   onSchedule,
+  onEdit,
+  onDelete,
   onPreview,
 }: {
   post: SocialPost
@@ -126,10 +168,13 @@ function LibraryRow({
   onRetry: () => void
   onArchive: () => void
   onSchedule: () => void
+  onEdit: () => void
+  onDelete: () => void
   onPreview: (platform: Platform) => void
 }) {
   const { t } = useLang()
   const hasManual = post.variants.some((v) => v.publishMode === "manual")
+  const editable = isEditableDraft(post.status)
   return (
     <div className="rounded-md border border-border px-4 py-3.5">
       <div className="flex items-start gap-3">
@@ -193,10 +238,23 @@ function LibraryRow({
               {t("Mark published", "标记已发布")}
             </Button>
           ) : null}
+          {/* 未发表草稿(Draft/Ready)：可二次修改(回到 Step 2 编辑窗口) / 硬删除。其它状态不显示。 */}
+          {editable ? (
+            <Button size="sm" variant="outline" onClick={onEdit}>
+              <PencilLine className="size-3.5" />
+              {t("Edit", "二次修改")}
+            </Button>
+          ) : null}
           <button onClick={onArchive} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted">
             <Archive className="size-3.5" />
             {t("Archive", "归档")}
           </button>
+          {editable ? (
+            <button onClick={onDelete} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-status-failed hover:bg-status-failed/10">
+              <Trash2 className="size-3.5" />
+              {t("Delete", "删除")}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

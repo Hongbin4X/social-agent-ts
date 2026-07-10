@@ -88,6 +88,9 @@ export const api = {
   }) => req<{ post: SocialPost }>("/posts", { method: "POST", body: JSON.stringify(input) }),
   updatePost: (id: string, patch: Record<string, unknown>) =>
     req<{ post: SocialPost }>(`/posts/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  // 硬删除草稿：projectId 走 body，供后端做归属校验 + 项目级删除。
+  deletePost: (id: string, projectId: string) =>
+    req<{ ok: boolean }>(`/posts/${id}`, { method: "DELETE", body: JSON.stringify({ projectId }) }),
 
   // calendar（排期 / 改期 / 取消 / 立即发布 / 转手动 —— 全部落库）
   createCalendarItem: (input: {
