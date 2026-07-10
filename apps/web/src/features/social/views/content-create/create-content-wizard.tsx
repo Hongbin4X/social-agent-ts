@@ -64,7 +64,7 @@ export function CreatePostWizard({
     updateVariant,
     saveStudioToLibrary,
     addStudioToCalendar,
-    schedulePost,
+    publishPostNow,
     pushToast,
   } = useSocial()
   const { t, te } = useLang()
@@ -783,8 +783,9 @@ export function CreatePostWizard({
         topic={studio.topic || t("Untitled topic", "未命名主题")}
         variants={variants}
         onConfirm={async () => {
+          // 立即发布：先存/更新入库，再真实发布到平台（走发布层），按结果回写状态。
           const post = await saveStudioToLibrary()
-          if (post) schedulePost(post)
+          if (post) await publishPostNow(post)
           setShowBatch(false)
           onClose()
         }}

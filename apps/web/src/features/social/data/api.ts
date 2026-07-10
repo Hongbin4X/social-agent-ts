@@ -4,11 +4,13 @@
 
 import type {
   Account,
+  BatchPublishResult,
   BrandProfile,
   CalendarItem,
   GenerateVariantsInput,
   Platform,
   PostVariant,
+  PublishItem,
   SocialPost,
 } from "@social/shared"
 
@@ -91,6 +93,9 @@ export const api = {
   // 硬删除草稿：projectId 走 body，供后端做归属校验 + 项目级删除。
   deletePost: (id: string, projectId: string) =>
     req<{ ok: boolean }>(`/posts/${id}`, { method: "DELETE", body: JSON.stringify({ projectId }) }),
+  // 真实发布：调发布层（@social/publisher）。userId/workspaceId 由后端从鉴权上下文取，前端只给 projectId+postId+items。
+  publish: (input: { projectId: string; postId?: string; items: PublishItem[] }) =>
+    req<BatchPublishResult>("/publish", { method: "POST", body: JSON.stringify(input) }),
 
   // calendar（排期 / 改期 / 取消 / 立即发布 / 转手动 —— 全部落库）
   createCalendarItem: (input: {

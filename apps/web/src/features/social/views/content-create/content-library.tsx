@@ -29,7 +29,7 @@ const FILTERS: { label: string; value: PostStatus | "All" }[] = [
 ]
 
 export function ContentLibrary({ onEditPost }: { onEditPost: (post: SocialPost) => void }) {
-  const { posts, markManuallyPublished, retryFailed, archivePost, deletePost, schedulePost } = useSocial()
+  const { posts, markManuallyPublished, retryFailed, archivePost, deletePost, schedulePost, publishPostNow } = useSocial()
   const { t, te } = useLang()
   const [filter, setFilter] = useState<PostStatus | "All">("All")
   const [selected, setSelected] = useState<string[]>([])
@@ -102,8 +102,9 @@ export function ContentLibrary({ onEditPost }: { onEditPost: (post: SocialPost) 
         onClose={() => setBatchOpen(false)}
         topic={selectedPosts.length === 1 ? selectedPosts[0].title : `${selectedPosts.length} posts selected`}
         variants={selectedPosts.flatMap((p) => p.variants)}
-        onConfirm={() => {
-          selectedPosts.forEach((p) => schedulePost(p))
+        onConfirm={async () => {
+          // 批量发布 = 真实发布：逐条调发布层（串行，避免并发把计费/限流打爆），各自按结果回写状态。
+          for (const p of selectedPosts) await publishPostNow(p)
           setSelected([])
           setBatchOpen(false)
         }}

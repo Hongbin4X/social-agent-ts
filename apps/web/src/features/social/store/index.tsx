@@ -32,13 +32,14 @@ import type {
   Platform,
   PostStatus,
   PostVariant,
+  PublishItem,
   Recommendation,
   SocialPost,
   Toast,
 } from "@social/shared"
 // 平台自动发布能力的唯一真源在 @social/shared（后端也复用同一份）。这里 import 后再 re-export，
 // 让原型里所有「从 store 引 AUTO_PLATFORMS / platformPublishMode」的调用方零改动。
-import { AUTO_PLATFORMS, platformPublishMode } from "@social/shared"
+import { AUTO_PLATFORMS, platformPublishMode, stripImageTokens } from "@social/shared"
 export { AUTO_PLATFORMS, platformPublishMode }
 
 export type AgentTab = "Home" | "Content Create" | "Calendar" | "Operations Data"
@@ -135,6 +136,9 @@ interface Store {
   archivePost: (postId: string) => void
   // 硬删除草稿（不可恢复；UI 侧已限定作用面并二次确认）。
   deletePost: (postId: string) => void
+
+  // 真实发布一条帖子到平台（调发布层）。返回各 outcome 计数；无可发布项/出错返回 null。
+  publishPostNow: (post: SocialPost) => Promise<{ published: number; failed: number; manual: number } | null>
 
   calendar: CalendarItem[]
   addStudioToCalendar: (date?: string, time?: string) => void
@@ -896,15 +900,85 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     [calendar, activeProjectId, pushToast],
   )
 
-  // 注：这里把日历任务标记为 Published 是「状态记录落库」，不代表已真发到平台。真实自动发布走 /api/publish（发布层，
-  // 需平台 OAuth token，属外部联调 seam）。联调后把这里改成调发布层、按其结果回写状态即可。
+  // 真实发布：把 post 里 auto 的变体组装成发布项，调 /api/publish 真发到平台，按结果回写帖子状态。
+  // 手动平台/无已连接账号的变体不进 items（发布层对它们本就会返回 manual_fallback）；全部无可发时如实提示。
+  const publishPostNow = useCallback(
+    async (post: SocialPost): Promise<{ published: number; failed: number; manual: number } | null> => {
+      if (!activeProjectId) {
+        pushToast(translate("Select a project first", "请先选择项目"), "warn")
+        return null
+      }
+      const items: PublishItem[] = []
+      for (const v of post.variants) {
+        if (v.publishMode !== "auto") continue
+        // 为该 auto 变体找同平台的已连接账号：优先精确匹配变体选定的账号名，退回该平台任一已连接账号。
+        const norm = (s: string) => s.replace(/^@/, "")
+        const acct =
+          accounts.find(
+            (a) => a.platform === v.platform && a.status === "Connected" && norm(a.name) === norm(v.account),
+          ) ?? accounts.find((a) => a.platform === v.platform && a.status === "Connected")
+        if (!acct) continue // 无已连接账号 → 交给手动兜底，不进自动发布 items
+        items.push({
+          target: { platform: v.platform, accountId: acct.id, accountType: acct.type },
+          content: {
+            // X 等单文本平台由发布层 composeText 组装：正文(去内联图 token) + 话题标签 + CTA 链接。
+            text: [v.hook, stripImageTokens(v.body)].map((s) => s?.trim()).filter(Boolean).join("\n\n"),
+            hashtags: v.hashtags?.trim() || undefined,
+            linkUrl: v.ctaUrl?.trim() || undefined,
+          },
+        })
+      }
+      if (items.length === 0) {
+        pushToast(
+          translate("No connected account to auto-publish — export and post manually.", "没有可自动发布的已连接账号，请手动发布。"),
+          "warn",
+        )
+        return null
+      }
+      try {
+        const res = await api.publish({ projectId: activeProjectId, postId: post.id, items })
+        const published = res.results.filter((r) => r.outcome === "published").length
+        const failed = res.results.filter((r) => r.outcome === "failed")
+        const manual = res.results.filter((r) => r.outcome === "manual_fallback").length
+        // 回写帖子状态：有失败=Failed；全成功=Published；否则(仅手动兜底)=ManualFallback。
+        const status: PostStatus = failed.length > 0 ? "Failed" : published > 0 ? "Published" : "ManualFallback"
+        const failureReason =
+          failed.length > 0 ? failed.map((f) => `${f.platform}: ${f.message}`).join("; ") : null
+        await api.updatePost(post.id, { status, failureReason })
+        setPosts((prev) =>
+          prev.map((p) => (p.id === post.id ? { ...p, status, failureReason: failureReason ?? undefined, updatedAt: "Just now" } : p)),
+        )
+        if (failed.length > 0) {
+          pushToast(translate(`Publish failed: ${failureReason}`, `发布失败：${failureReason}`), "warn")
+        } else if (published > 0) {
+          pushToast(translate(`Published to ${published} platform(s)`, `已发布到 ${published} 个平台`), "success")
+        } else {
+          pushToast(translate("Some platforms need manual publishing", "部分平台需手动发布"), "default")
+        }
+        return { published, failed: failed.length, manual }
+      } catch (e) {
+        pushToast(translate(`Publish failed: ${(e as Error).message}`, `发布失败：${(e as Error).message}`), "warn")
+        return null
+      }
+    },
+    [activeProjectId, accounts, pushToast],
+  )
+
+  // 日历「立即发布」：走真实发布——按 postId 找到帖子，调 publishPostNow 真发，再按结果回写日历项/子任务状态。
   const publishCalendarItemNow = useCallback(
     async (id: string) => {
       const item = calendar.find((c) => c.id === id)
-      const hasManual = (item?.variants ?? []).some((v) => v.publishMode === "manual")
-      const itemStatus: PostStatus = hasManual ? "ManualFallback" : "Published"
+      const post = item?.postId ? posts.find((p) => p.id === item.postId) : undefined
+      if (!post) {
+        pushToast(translate("Post not found for this schedule", "找不到该排期对应的帖子"), "warn")
+        return
+      }
+      const outcome = await publishPostNow(post)
+      if (!outcome) return // publishPostNow 已 toast 原因（无可发/失败）
+      // 回写日历项：auto 子任务标 Published，失败则整项 Failed；有手动则 ManualFallback。
+      const itemStatus: PostStatus = outcome.failed > 0 ? "Failed" : outcome.published > 0 ? "Published" : "ManualFallback"
       const jobs = (item?.variants ?? []).map((v) =>
-        v.publishMode === "auto" ? { ...v, status: "Published" as PostStatus } : v,
+        v.publishMode === "auto" ? { ...v, status: itemStatus } : v,
       )
       setCalendar((prev) => prev.map((c) => (c.id === id ? { ...c, status: itemStatus, variants: jobs } : c)))
       try {
@@ -912,9 +986,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.warn("[store] 立即发布落库失败：", (e as Error).message)
       }
-      pushToast(translate("Auto platforms published now", "自动平台已立即发布"), "success")
     },
-    [calendar, activeProjectId, pushToast],
+    [calendar, posts, activeProjectId, publishPostNow, pushToast],
   )
 
   const convertCalendarItemToManual = useCallback(
@@ -1169,6 +1242,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       retryFailed,
       archivePost,
       deletePost,
+      publishPostNow,
       calendar,
       addStudioToCalendar,
       schedulePost,
@@ -1226,6 +1300,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       retryFailed,
       archivePost,
       deletePost,
+      publishPostNow,
       calendar,
       addStudioToCalendar,
       schedulePost,
