@@ -28,3 +28,28 @@ export function serverConfigFromEnv(env = process.env): ServerConfig {
     mediaLocalDir: env.MEDIA_LOCAL_DIR || undefined,
   }
 }
+
+/** X（Twitter）开发者应用凭证（授权路由 + token 续期共用）。 */
+export interface XOAuthConfig {
+  clientId: string
+  /** confidential client（Web/Automated App）才有；public client 留空。只在后端，绝不下发前端。 */
+  clientSecret?: string
+  /** 送用户回来的回调地址，必须与 X 后台登记的**完全一致**。paste-back 流程下无需可达、只需已注册。 */
+  redirectUri: string
+  scopes?: string
+}
+
+/**
+ * 从 env 读 X 应用凭证。未配 X_CLIENT_ID → 返回 null（授权路由据此如实 501「未接通」，不假装）。
+ * redirectUri 缺省用 demo 已注册的 127.0.0.1:8765/callback（复用 demo 应用时正好对上）。
+ */
+export function xOAuthConfigFromEnv(env = process.env): XOAuthConfig | null {
+  const clientId = env.X_CLIENT_ID?.trim()
+  if (!clientId) return null
+  return {
+    clientId,
+    clientSecret: env.X_CLIENT_SECRET?.trim() || undefined,
+    redirectUri: env.X_REDIRECT_URI?.trim() || "http://127.0.0.1:8765/callback",
+    scopes: env.X_OAUTH_SCOPES?.trim() || undefined,
+  }
+}
