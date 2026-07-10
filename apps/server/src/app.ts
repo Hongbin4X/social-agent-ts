@@ -33,13 +33,13 @@ app.use(
 // 占位：把共享的计费表暴露出来，证明 @social/shared 在前后端间已打通。真实计费预扣/回写接 GLBGPT 后再实现。
 app.get("/api/billing/credit-costs", (c) => c.json(CREDIT_COSTS))
 
-// 发布层：批量发布 + 平台能力矩阵（spec §11）。发布编排走 @social/publisher，可切直连/聚合两种实现。
-app.route("/api/publish", publishRoutes)
-
 // ── 领域路由（前端全部操作的接口）。鉴权中间件解析 userId（本地走 DEV_FAKE_USER_ID）。──
 // 账号连接（/api/connections）需要 workspace 上下文（授权/回调/断开都按 workspace 归属），故也纳入鉴权。
+// 发布（/api/publish）也需 workspace 上下文：路由从鉴权取 userId/workspaceId（不信任前端身份），
+//   故必须纳入鉴权中间件，且中间件要在 app.route 之前注册，否则请求先被路由处理、拿不到 userId（会误报「先创建工作区」）。
 const auth = authMiddleware(serverConfigFromEnv().devFakeUserId)
 for (const base of [
+  "/api/publish",
   "/api/workspace",
   "/api/projects",
   "/api/accounts",
@@ -51,6 +51,8 @@ for (const base of [
   app.use(base, auth)
   app.use(`${base}/*`, auth)
 }
+// 发布层：批量发布 + 平台能力矩阵（spec §11）。发布编排走 @social/publisher，可切直连/聚合两种实现。
+app.route("/api/publish", publishRoutes)
 app.route("/api/workspace", workspaceRoutes)
 app.route("/api/projects", projectRoutes)
 app.route("/api/accounts", accountRoutes)
