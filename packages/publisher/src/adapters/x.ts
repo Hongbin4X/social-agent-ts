@@ -44,12 +44,22 @@ export class XPublisher implements SocialPublisher {
       body: JSON.stringify({ text }),
     })
 
-    if (res.status === 429) throw new PublisherError("rate_limited", "X 触发限流（429）")
-    if (res.status === 401 || res.status === 403) {
-      throw new PublisherError("permission_missing", `X 授权无效/权限不足（${res.status}）`)
-    }
     if (!res.ok) {
-      throw new PublisherError("provider_error", `X 发布失败 ${res.status}: ${await safeBody(res)}`)
+      // 先把 X 的真实错误体读出来——绝不吞掉（旧代码把 401/403 一律标成「授权无效」，把重复内容等真实原因藏了）。
+      const bodyText = await safeBody(res)
+      // 重复内容：X 对与近期完全相同的推文返回 403 duplicate content。这不是授权/权限问题，
+      // 给用户可行动的清晰提示（改文案或换账号/稍后），别再误导成「授权无效」。
+      if (res.status === 403 && /duplicate content/i.test(bodyText)) {
+        throw new PublisherError("content_invalid", "内容重复：X 不允许发布与近期完全相同的推文，请修改文案后再发")
+      }
+      if (res.status === 429) throw new PublisherError("rate_limited", `X 触发限流（429）：${bodyText}`)
+      if (res.status === 401) {
+        throw new PublisherError("token_expired", `X 授权失效，请重新连接账号（401）：${bodyText}`)
+      }
+      if (res.status === 403) {
+        throw new PublisherError("permission_missing", `X 权限不足（403）：${bodyText}`)
+      }
+      throw new PublisherError("provider_error", `X 发布失败 ${res.status}：${bodyText}`)
     }
 
     const data = (await res.json()) as { data?: { id?: string } }

@@ -908,6 +908,12 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         pushToast(translate("Select a project first", "请先选择项目"), "warn")
         return null
       }
+      // 已发布过的帖子不再重复发：X 等平台会因「重复内容」直接 403 拒绝，重发既无意义又误导用户。
+      // 要再发请先「二次修改」改文案（会回到草稿态），或复制成新帖。
+      if (post.status === "Published" || post.status === "ManuallyPublished") {
+        pushToast(translate("Already published — edit the copy to publish again.", "该帖已发布过，如需再发请先二次修改文案。"), "warn")
+        return null
+      }
       const items: PublishItem[] = []
       for (const v of post.variants) {
         if (v.publishMode !== "auto") continue
