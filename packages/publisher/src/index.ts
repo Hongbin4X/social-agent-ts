@@ -29,6 +29,33 @@ export type {
   TokenStore,
 } from "./ports"
 
+// X OAuth2 + PKCE 授权核心（框架无关纯函数 + XApp 封装）。授权路由/DbTokenStore 从这里取用。
+export {
+  buildAuthorizeUrl,
+  exchangeCode,
+  extractCode,
+  generatePkce,
+  getMe,
+  refreshAccessToken,
+  XOAuthError,
+  X_AUTHORIZE_URL,
+  X_DEFAULT_SCOPES,
+  X_ME_URL,
+  X_TOKEN_URL,
+  type AuthorizeUrlParams,
+  type ExchangeCodeParams,
+  type Pkce,
+  type RefreshParams,
+  type XTokenResponse,
+  type XUser,
+} from "./x/oauth"
+export {
+  XApp,
+  type XAppConfig,
+  type FinishAuthorizationParams,
+  type StartAuthorizationResult,
+} from "./x/xapp"
+
 // adapter 与其配置类型（一般不用直接 new，但联调/自定义装配时可能要）。
 export { XPublisher, type XConfig } from "./adapters/x"
 export { MetaPublisher, type MetaConfig } from "./adapters/meta"
