@@ -102,10 +102,23 @@ export const ssaSocialAccount = mysqlTable(
     expiresAt: varchar("expires_at", { length: 30 }),
     capabilities: varchar("capabilities", { length: 500 }),
     notes: varchar("notes", { length: 500 }),
+    // ── OAuth 连接凭证（platform=X, type=connected 的账号一行一套；手动账号这些恒 NULL）──
+    // 设计见 docs/superpowers/specs/2026-07-10-x-real-auth-posting-design.md §3.2。
+    // 安全：本地 dev 库明文存，上线前在仓储的单一读写缝加 AES-256-GCM（token 绝不进 Account 领域类型/前端）。
+    externalAccountId: varchar("external_account_id", { length: 64 }), // X user id（平台侧账号唯一标识）
+    username: varchar("username", { length: 64 }), // @handle，展示 + 拼 tweet 链接用
+    accessToken: text("access_token"), // 门禁卡，约 2h 过期
+    refreshToken: text("refresh_token"), // 续卡凭证；X 续期常轮换，续后必须覆盖写回（头号翻车点）
+    scope: varchar("scope", { length: 255 }),
+    tokenExpiresAt: bigint("token_expires_at", { mode: "number" }), // access_token 过期绝对时刻（epoch 秒）
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("idx_account_workspace").on(t.workspaceId)],
+  (t) => [
+    index("idx_account_workspace").on(t.workspaceId),
+    // 同工作区同平台同一个外部账号唯一 → 按 X 用户 upsert 连接（external 为 NULL 的手动账号可多行，MySQL 唯一索引放行多 NULL）。
+    uniqueIndex("uq_account_external").on(t.workspaceId, t.platform, t.externalAccountId),
+  ],
 )
 
 // ── 帖子（项目级隔离）──

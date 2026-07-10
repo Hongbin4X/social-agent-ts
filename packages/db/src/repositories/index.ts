@@ -48,7 +48,14 @@ export function createRepositories(db: Database): Repositories {
 }
 
 // 仓储接口 + 领域/入参类型 re-export（上层按需引用）。
-export type { AccountInput, AccountPatch, AccountRepo } from "./account.repo"
+export type {
+  AccountInput,
+  AccountPatch,
+  AccountRepo,
+  UpdateTokensInput,
+  UpsertConnectedInput,
+  XTokenSnapshot,
+} from "./account.repo"
 export type {
   BillingRecordInput,
   BillingRecordPatch,

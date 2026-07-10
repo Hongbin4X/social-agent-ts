@@ -1,6 +1,6 @@
 // 社媒账号仓储：工作区级（跨品牌共享），按 workspaceId 隔离。
 
-import { asc, eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 import type { Account, AccountStatus, AccountType, Platform } from "@social/shared"
 import type { Database } from "../client"
 import { newId } from "../id"
@@ -10,11 +10,65 @@ import { ssaSocialAccount } from "../schema"
 export type AccountInput = Omit<Account, "id">
 export type AccountPatch = Partial<Omit<Account, "id">>
 
+/**
+ * X 连接的 OAuth token 快照 —— **仅 server 内部流转**，绝不并入 Account 领域类型/下发前端。
+ * token 列直接读自 ssa_social_account（详见 schema.ts §OAuth 连接凭证）。
+ */
+export interface XTokenSnapshot {
+  accountId: string
+  workspaceId: string
+  platform: Platform
+  externalAccountId: string | null
+  username: string | null
+  accessToken: string | null
+  refreshToken: string | null
+  scope: string | null
+  /** epoch 秒；null=未知过期时间。 */
+  tokenExpiresAt: number | null
+  status: AccountStatus
+}
+
+/** upsert 一个「已授权」的连接账号（按 workspace+platform+externalAccountId 去重）。 */
+export interface UpsertConnectedInput {
+  platform: Platform
+  externalAccountId: string
+  username?: string | null
+  /** 账号展示名（Account.name）。 */
+  displayName: string
+  url?: string | null
+  accessToken: string
+  refreshToken?: string | null
+  scope?: string | null
+  /** epoch 秒。 */
+  tokenExpiresAt: number
+}
+
+/** 续期后回写的 token（只覆盖会变的字段；refreshToken 只在 X 返回新的时才传）。 */
+export interface UpdateTokensInput {
+  accessToken: string
+  refreshToken?: string | null
+  scope?: string | null
+  tokenExpiresAt: number
+}
+
 export interface AccountRepo {
   listByWorkspace(workspaceId: string): Promise<Account[]>
   getById(id: string): Promise<Account | null>
   create(workspaceId: string, input: AccountInput): Promise<Account>
   update(id: string, patch: AccountPatch): Promise<void>
+  // ── OAuth 连接凭证（server 内部）──
+  /** 读某账号的 token 快照（含 status）；无此账号返回 null。 */
+  getTokens(accountId: string): Promise<XTokenSnapshot | null>
+  /** 按外部账号查已存在的连接账号（用于 upsert 去重）。 */
+  findByExternal(workspaceId: string, platform: Platform, externalAccountId: string): Promise<Account | null>
+  /** 授权成功：按 (workspace,platform,external) upsert 连接账号并写入 token，status=Connected。 */
+  upsertConnectedAccount(workspaceId: string, input: UpsertConnectedInput): Promise<Account>
+  /** 续期后覆盖写回新 token（含轮换的 refresh_token）。 */
+  updateTokens(accountId: string, input: UpdateTokensInput): Promise<void>
+  /** 只改连接状态（如 refresh 失败标 PermissionMissing / Expired）。 */
+  setStatus(accountId: string, status: AccountStatus): Promise<void>
+  /** 断开连接：清空所有 token 列，status=NotConnected。 */
+  clearTokens(accountId: string): Promise<void>
 }
 
 type AccountRow = typeof ssaSocialAccount.$inferSelect
@@ -58,6 +112,126 @@ export class DrizzleAccountRepo implements AccountRepo {
     // Account 字段名与列名一一对应，可直接 set。
     await this.db.update(ssaSocialAccount).set(patch).where(eq(ssaSocialAccount.id, id))
   }
+
+  // ── OAuth 连接凭证（server 内部；token 不进 Account 领域类型）──
+
+  async getTokens(accountId: string): Promise<XTokenSnapshot | null> {
+    const rows = await this.db.select().from(ssaSocialAccount).where(eq(ssaSocialAccount.id, accountId)).limit(1)
+    const row = rows[0]
+    if (!row) return null
+    return {
+      accountId: row.id,
+      workspaceId: row.workspaceId,
+      platform: row.platform as Platform,
+      externalAccountId: row.externalAccountId ?? null,
+      username: row.username ?? null,
+      accessToken: row.accessToken ?? null,
+      refreshToken: row.refreshToken ?? null,
+      scope: row.scope ?? null,
+      tokenExpiresAt: row.tokenExpiresAt ?? null,
+      status: row.status as AccountStatus,
+    }
+  }
+
+  async findByExternal(
+    workspaceId: string,
+    platform: Platform,
+    externalAccountId: string,
+  ): Promise<Account | null> {
+    const rows = await this.db
+      .select()
+      .from(ssaSocialAccount)
+      .where(
+        and(
+          eq(ssaSocialAccount.workspaceId, workspaceId),
+          eq(ssaSocialAccount.platform, platform),
+          eq(ssaSocialAccount.externalAccountId, externalAccountId),
+        ),
+      )
+      .limit(1)
+    return rows[0] ? rowToAccount(rows[0]) : null
+  }
+
+  async upsertConnectedAccount(workspaceId: string, input: UpsertConnectedInput): Promise<Account> {
+    const existing = await this.findByExternal(workspaceId, input.platform, input.externalAccountId)
+    // 展示用过期时刻（ISO）—— 与 token_expires_at(epoch) 同源，仅给前端看，续期逻辑只认 epoch。
+    const expiresAtIso = new Date(input.tokenExpiresAt * 1000).toISOString()
+    const tokenCols = {
+      externalAccountId: input.externalAccountId,
+      username: input.username ?? null,
+      accessToken: input.accessToken,
+      refreshToken: input.refreshToken ?? null,
+      scope: input.scope ?? null,
+      tokenExpiresAt: input.tokenExpiresAt,
+      status: "Connected" as AccountStatus,
+      name: input.displayName,
+      url: input.url ?? null,
+      expiresAt: expiresAtIso,
+    }
+    if (existing) {
+      await this.db.update(ssaSocialAccount).set(tokenCols).where(eq(ssaSocialAccount.id, existing.id))
+      return { ...existing, ...rowSubset(tokenCols) }
+    }
+    const id = newId("acc")
+    await this.db.insert(ssaSocialAccount).values({
+      id,
+      workspaceId,
+      platform: input.platform,
+      type: "connected" as AccountType,
+      capabilities: "Auto publish (X API v2)",
+      ...tokenCols,
+    })
+    return {
+      id,
+      platform: input.platform,
+      type: "connected",
+      name: input.displayName,
+      url: input.url ?? "",
+      status: "Connected",
+      expiresAt: expiresAtIso,
+      capabilities: "Auto publish (X API v2)",
+    }
+  }
+
+  async updateTokens(accountId: string, input: UpdateTokensInput): Promise<void> {
+    const set: Record<string, unknown> = {
+      accessToken: input.accessToken,
+      tokenExpiresAt: input.tokenExpiresAt,
+      expiresAt: new Date(input.tokenExpiresAt * 1000).toISOString(),
+    }
+    // 只有 X 返回了新 refresh_token 才覆盖（轮换）；没返回就保留旧的，别写 null 把用户的续卡凭证抹了。
+    if (input.refreshToken != null) set.refreshToken = input.refreshToken
+    if (input.scope != null) set.scope = input.scope
+    await this.db.update(ssaSocialAccount).set(set).where(eq(ssaSocialAccount.id, accountId))
+  }
+
+  async setStatus(accountId: string, status: AccountStatus): Promise<void> {
+    await this.db.update(ssaSocialAccount).set({ status }).where(eq(ssaSocialAccount.id, accountId))
+  }
+
+  async clearTokens(accountId: string): Promise<void> {
+    await this.db
+      .update(ssaSocialAccount)
+      .set({
+        accessToken: null,
+        refreshToken: null,
+        scope: null,
+        tokenExpiresAt: null,
+        expiresAt: null,
+        status: "NotConnected" as AccountStatus,
+      })
+      .where(eq(ssaSocialAccount.id, accountId))
+  }
+}
+
+/** 从 upsert 的 token 列子集里取出属于 Account 领域类型的展示字段（name/url/status/expiresAt）。 */
+function rowSubset(cols: {
+  name: string
+  url: string | null
+  status: AccountStatus
+  expiresAt: string
+}): Pick<Account, "name" | "url" | "status" | "expiresAt"> {
+  return { name: cols.name, url: cols.url ?? "", status: cols.status, expiresAt: cols.expiresAt }
 }
 
 function rowToAccount(row: AccountRow): Account {
