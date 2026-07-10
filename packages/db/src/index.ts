@@ -45,9 +45,12 @@ export type {
   ProjectRepo,
   PromptRepo,
   PromptRow,
+  UpdateTokensInput,
+  UpsertConnectedInput,
   WorkspaceCreateInput,
   WorkspacePatch,
   WorkspaceRepo,
+  XTokenSnapshot,
 } from "./repositories/index"
 
 // Drizzle schema（drizzle-kit / 迁移 / 需要直接拿表的场景引用）

@@ -35,12 +35,19 @@ app.get("/api/billing/credit-costs", (c) => c.json(CREDIT_COSTS))
 
 // 发布层：批量发布 + 平台能力矩阵（spec §11）。发布编排走 @social/publisher，可切直连/聚合两种实现。
 app.route("/api/publish", publishRoutes)
-// 账号连接（OAuth）脚手架：暴露每平台所需权限，授权起始待联调（spec §9 Connections）。
-app.route("/api/connections", connectionRoutes)
 
 // ── 领域路由（前端全部操作的接口）。鉴权中间件解析 userId（本地走 DEV_FAKE_USER_ID）。──
+// 账号连接（/api/connections）需要 workspace 上下文（授权/回调/断开都按 workspace 归属），故也纳入鉴权。
 const auth = authMiddleware(serverConfigFromEnv().devFakeUserId)
-for (const base of ["/api/workspace", "/api/projects", "/api/accounts", "/api/posts", "/api/calendar", "/api/generate"]) {
+for (const base of [
+  "/api/workspace",
+  "/api/projects",
+  "/api/accounts",
+  "/api/posts",
+  "/api/calendar",
+  "/api/generate",
+  "/api/connections",
+]) {
   app.use(base, auth)
   app.use(`${base}/*`, auth)
 }
@@ -50,5 +57,6 @@ app.route("/api/accounts", accountRoutes)
 app.route("/api/posts", postRoutes)
 app.route("/api/calendar", calendarRoutes)
 app.route("/api/generate", generateRoutes)
+app.route("/api/connections", connectionRoutes)
 
 export type AppType = typeof app
