@@ -25,6 +25,7 @@ export function AccountHubPanel() {
   const { accounts, connectAccount, disconnectAccount, refreshAccount, addManualAccount } = useSocial()
   const { t } = useLang()
   const [manualOpen, setManualOpen] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
 
   return (
     <Card className="p-5">
@@ -38,10 +39,21 @@ export function AccountHubPanel() {
             )}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setManualOpen(true)}>
-          <Plus className="size-4" />
-          {t("Add manual account", "添加手动账号")}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* 授权连接入口：走真实 OAuth，落库 token（区别于「手动账号」仅记录展示信息）。 */}
+          <Button
+            size="sm"
+            className="bg-brand text-brand-foreground hover:bg-brand/90"
+            onClick={() => setAuthOpen(true)}
+          >
+            <Plug className="size-4" />
+            {t("Authorize account", "添加授权账号")}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setManualOpen(true)}>
+            <Plus className="size-4" />
+            {t("Add manual account", "添加手动账号")}
+          </Button>
+        </div>
       </div>
 
       <div className="mt-3 rounded-md border border-border bg-[oklch(0.97_0.02_70)] px-3 py-2 text-xs text-[oklch(0.45_0.1_60)]">
@@ -63,6 +75,16 @@ export function AccountHubPanel() {
         ))}
       </div>
 
+      <AuthorizeAccountModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onAuthorize={(platform) => {
+          setAuthOpen(false)
+          // 真实 OAuth：X 走弹窗授权 + 轮询落库（见 store.connectX）；其它平台暂未接通。
+          connectAccount(platform)
+        }}
+      />
+
       <ManualAccountModal
         open={manualOpen}
         onClose={() => setManualOpen(false)}
@@ -72,6 +94,65 @@ export function AccountHubPanel() {
         }}
       />
     </Card>
+  )
+}
+
+// 「添加授权账号」入口：列出支持 OAuth 授权的平台。目前仅 X 已接通真实授权（弹窗 → 回调落 token）；
+// Instagram/Facebook 需 Meta App Review，暂标「即将支持」不假装可用（铁律：不掩盖、不假装）。
+function AuthorizeAccountModal({
+  open,
+  onClose,
+  onAuthorize,
+}: {
+  open: boolean
+  onClose: () => void
+  onAuthorize: (platform: Platform) => void
+}) {
+  const { t } = useLang()
+  const AUTH_PLATFORMS: { platform: Platform; ready: boolean; note: string }[] = [
+    { platform: "X", ready: true, note: t("OAuth2 + PKCE · auto publishing", "OAuth2 + PKCE · 支持自动发帖") },
+    { platform: "Instagram", ready: false, note: t("Needs Meta App Review", "需 Meta 应用审核") },
+    { platform: "Facebook", ready: false, note: t("Needs Meta App Review", "需 Meta 应用审核") },
+  ]
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t("Authorize a social account", "添加授权账号")}
+      description={t(
+        "Authorize via the platform's OAuth. Tokens are stored on the backend; we never store your password.",
+        "通过平台 OAuth 授权连接。token 保存在后端，绝不保存你的密码。",
+      )}
+      footer={
+        <Button variant="ghost" onClick={onClose}>
+          {t("Close", "关闭")}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-2.5">
+        {AUTH_PLATFORMS.map((p) => (
+          <div key={p.platform} className="flex items-center gap-3 rounded-md border border-border px-3 py-2.5">
+            <PlatformBadge platform={p.platform} size="md" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-foreground">{p.platform}</div>
+              <div className="text-xs text-muted-foreground">{p.note}</div>
+            </div>
+            {p.ready ? (
+              <Button
+                size="sm"
+                className="bg-brand text-brand-foreground hover:bg-brand/90"
+                onClick={() => onAuthorize(p.platform)}
+              >
+                <Plug className="size-3.5" />
+                {t("Authorize", "去授权")}
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">{t("Coming soon", "即将支持")}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </Modal>
   )
 }
 

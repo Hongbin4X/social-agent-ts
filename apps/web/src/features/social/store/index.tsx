@@ -1158,9 +1158,15 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   // 其它平台（IG/FB）OAuth 未接通，暂沿用「只标状态」的原型行为（不假装拿到 token；接通后同样改成触发真授权）。
   const connectX = useCallback(async () => {
     let authorizeUrl: string
+    // 先权威快照「当前已连接的 X 账号 id」——用来识别本次【新授权】的那个账号。
+    // 关键：库里可能已有连接的 X 账号，若只看「有没有已连接 X」会秒误判成功、根本没等新授权。
+    let prevConnectedIds = new Set<string>()
     try {
-      const res = await api.startXAuth()
-      authorizeUrl = res.authorizeUrl
+      const [auth, before] = await Promise.all([api.startXAuth(), api.getAccounts()])
+      authorizeUrl = auth.authorizeUrl
+      prevConnectedIds = new Set(
+        before.accounts.filter((a) => a.platform === "X" && a.status === "Connected").map((a) => a.id),
+      )
     } catch (e) {
       // 后端没配 X_CLIENT_ID 会 501；如实告知，不假装已连。
       pushToast(translate(`Cannot start X authorization: ${(e as Error).message}`, `无法发起 X 授权：${(e as Error).message}`), "warn")
@@ -1173,9 +1179,11 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     }
     pushToast(translate("Authorize X in the popup…", "请在弹窗中完成 X 授权…"), "default")
 
-    // 成功感知：任一路径命中即刷新账号并收尾。
+    // 成功感知：出现「不在快照里的已连接 X 账号」= 本次新授权成功。任一路径命中即刷新收尾。
     let done = false
-    const finish = async () => {
+    const newlyConnected = (list: Account[]) =>
+      list.find((a) => a.platform === "X" && a.status === "Connected" && !prevConnectedIds.has(a.id))
+    const finish = async (fromClose = false) => {
       if (done) return
       done = true
       window.removeEventListener("message", onMsg)
@@ -1183,8 +1191,11 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       try {
         const { accounts: fresh } = await api.getAccounts()
         setAccounts(fresh)
-        const x = fresh.find((a) => a.platform === "X" && a.status === "Connected")
-        if (x) pushToast(translate(`X connected: ${x.name}`, `已连接 X:${x.name}`), "success")
+        const added = newlyConnected(fresh)
+        if (added) pushToast(translate(`X connected: ${added.name}`, `已连接 X:${added.name}`), "success")
+        else if (fromClose)
+          // 弹窗被关但没连上新账号：授权未完成，如实提示（不假装成功）。
+          pushToast(translate("Authorization window closed before completing.", "授权窗口已关闭,未完成授权。"), "default")
       } catch (e) {
         console.warn("[store] 刷新账号失败：", (e as Error).message)
       }
@@ -1194,13 +1205,13 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       if (ev?.data && (ev.data as { type?: string }).type === "x-oauth" && (ev.data as { ok?: boolean }).ok) void finish()
     }
     window.addEventListener("message", onMsg)
-    // 兜底路径：轮询后端账号，X 变 Connected 即成功；弹窗关闭后再兜一轮；3 分钟超时。
+    // 兜底路径：轮询后端账号，出现新的已连接 X 账号即成功；弹窗关闭后再兜一轮；3 分钟超时。
     const deadline = Date.now() + 3 * 60_000
     const poll = setInterval(async () => {
       if (done) return
       try {
         const { accounts: fresh } = await api.getAccounts()
-        if (fresh.find((a) => a.platform === "X" && a.status === "Connected")) {
+        if (newlyConnected(fresh)) {
           void finish()
           return
         }
@@ -1209,8 +1220,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       }
       if (Date.now() > deadline || popup.closed) {
         clearInterval(poll)
-        // 弹窗关了还没连上：再兜最后一轮（授权刚落库、状态可能刚变）。
-        if (popup.closed && !done) void finish()
+        if (!done) void finish(true) // 超时/关窗兜底：再核一轮，没新账号则如实提示未完成
       }
     }, 2500)
   }, [pushToast])
