@@ -270,12 +270,15 @@ async function mapXError(res: Response, action: string): Promise<PublisherError>
   if (res.status === 429) return new PublisherError("rate_limited", `X 触发限流（429）：${bodyText}`)
   if (res.status === 401) return new PublisherError("token_expired", `X 授权失效，请重新连接账号（401）：${bodyText}`)
   if (res.status === 403) {
-    // 「not permitted to perform this action」几乎都是 App 写权限被拿掉：token 有 tweet.write，但 X 后台
-    // App permissions 掉成了 Read（编辑 User authentication settings 时常被悄悄重置）。给出可直接照做的指引。
+    // 「not permitted to perform this action」是个笼统的 403，实测有多种成因，按概率排序给出：
+    //  ① 内容被 X 反垃圾/安全过滤器拦下（营销文案 + 多标签 + 推广链接的组合最易中招）——最常见，改文案即可；
+    //  ② App 写权限掉了（X 后台 App permissions 非 Read and write，或改过权限后 token 未重新授权）；
+    //  ③ 账号被 X 限流/限制。
+    // 不再武断归因单一原因（曾误判成 App 权限），把可行动项都列出来。
     if (/not permitted to perform this action/i.test(bodyText)) {
       return new PublisherError(
-        "permission_missing",
-        "X 拒绝发帖（403 not permitted）：多半是 X 开发者后台 App 的写权限掉了。请到 X 后台 → 该 App → User authentication settings → 把 App permissions 设为「Read and write」并保存，然后重新授权该账号后再发。",
+        "content_invalid",
+        "X 拒绝发帖（403 not permitted）。常见原因(按概率)：① 这条内容被 X 的反垃圾/安全过滤拦下——试着精简文案、减少话题标签、去掉可疑或推广链接后重发；② X 后台该 App 的 permissions 不是「Read and write」，或改过权限后没重新授权；③ 账号被限流。多数情况是①，先改内容试试。",
       )
     }
     return new PublisherError("permission_missing", `X 权限不足（403）：${bodyText}`)
