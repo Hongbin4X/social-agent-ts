@@ -61,11 +61,13 @@ export {
   postTweet,
   postThread,
   postArticle,
+  uploadMedia,
   splitIntoThreadSegments,
   X_TWEET_MAX,
   type PostedTweet,
   type PostedThread,
   type PostedArticle,
+  type UploadMediaParams,
 } from "./x/client"
 
 // adapter 与其配置类型（一般不用直接 new，但联调/自定义装配时可能要）。

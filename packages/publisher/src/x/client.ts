@@ -11,9 +11,46 @@
 
 import { PublisherError } from "../errors"
 
-// tweet 端点 api.twitter.com 已实测可用（master 真发过 tweet）；articles 端点在 api.x.com。
+// tweet 端点 api.twitter.com 已实测可用（master 真发过 tweet）；articles/media 端点在 api.x.com。
 const TWEET_BASE = "https://api.twitter.com"
 const ARTICLE_BASE = "https://api.x.com"
+const MEDIA_URL = "https://api.x.com/2/media/upload" // demo 用 @ChenR292518 实测可传图（需 media.write）
+
+export interface UploadMediaParams {
+  accessToken: string
+  /** 图片字节（Uint8Array；Buffer 也是 Uint8Array 子类，可直接传）。 */
+  bytes: Uint8Array
+  /** 正确 MIME（image/jpeg | image/png | ...）；X v2 传图不认 application/octet-stream。 */
+  mimeType: string
+  /** 媒体类别，默认 tweet_image。 */
+  category?: string
+  fetchImpl?: typeof fetch
+}
+
+/**
+ * v2 传图 → 返回 media_id。**需 media.write scope + 账号所在档位支持**（Free 档常 403）。
+ * 失败直接抛（映射 PublisherError），不降级不掩盖。移植自 demo/x-poster uploadMedia。
+ */
+export async function uploadMedia(params: UploadMediaParams): Promise<string> {
+  const fetchImpl = params.fetchImpl ?? fetch
+  const form = new FormData()
+  const blob = new Blob([params.bytes], { type: params.mimeType })
+  form.append("media", blob, "upload")
+  form.append("media_category", params.category ?? "tweet_image")
+  // 注意：FormData 自己带 multipart boundary，绝不能手写 content-type。
+  const res = await fetchImpl(MEDIA_URL, {
+    method: "POST",
+    headers: { authorization: `Bearer ${params.accessToken}` },
+    body: form,
+  })
+  if (!res.ok) throw await mapXError(res, "传图")
+  const json = (await res.json().catch(() => null)) as
+    | { data?: { id?: string }; media_id_string?: string; media_id?: string | number }
+    | null
+  const mediaId = json?.data?.id ?? json?.media_id_string ?? json?.media_id
+  if (!mediaId) throw new PublisherError("provider_error", "X 传图返回缺少 media_id")
+  return String(mediaId)
+}
 
 export interface PostedTweet {
   id: string
@@ -28,6 +65,8 @@ export interface PostTweetParams {
   text: string
   /** 串推：传上一条 id，则本条作为其回复发出。 */
   replyToTweetId?: string
+  /** 附带的 media_id（先经 uploadMedia 拿到）；带上即图文推文。最多 4 张。 */
+  mediaIds?: string[]
   /** 传了就拼更友好的帖子链接。 */
   username?: string
   fetchImpl?: typeof fetch
@@ -35,11 +74,12 @@ export interface PostTweetParams {
   apiBaseUrl?: string
 }
 
-/** 发单条推文（可作为串推的一环）。 */
+/** 发单条推文（可作为串推的一环；带 mediaIds 即图文）。 */
 export async function postTweet(params: PostTweetParams): Promise<PostedTweet> {
   const fetchImpl = params.fetchImpl ?? fetch
   const base = (params.apiBaseUrl ?? TWEET_BASE).replace(/\/+$/, "")
   const body: Record<string, unknown> = { text: params.text }
+  if (params.mediaIds && params.mediaIds.length > 0) body["media"] = { media_ids: params.mediaIds.slice(0, 4) }
   if (params.replyToTweetId) body["reply"] = { in_reply_to_tweet_id: params.replyToTweetId }
 
   const res = await fetchImpl(`${base}/2/tweets`, {
@@ -58,6 +98,8 @@ export interface PostThreadParams {
   accessToken: string
   /** 已分好的段落文本（每段 ≤280）。空数组会抛 content_invalid。 */
   segments: string[]
+  /** 挂到首条推文的 media_ids（图文串推）。 */
+  firstMediaIds?: string[]
   username?: string
   fetchImpl?: typeof fetch
   apiBaseUrl?: string
@@ -88,6 +130,8 @@ export async function postThread(params: PostThreadParams): Promise<PostedThread
       const tweet = await postTweet({
         accessToken: params.accessToken,
         text: segs[i]!,
+        // 图片只挂首条（i===0）。
+        mediaIds: i === 0 ? params.firstMediaIds : undefined,
         replyToTweetId: prevId,
         username: params.username,
         fetchImpl: params.fetchImpl,

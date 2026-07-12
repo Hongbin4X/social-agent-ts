@@ -151,6 +151,10 @@ async function cmdPost(
 ) {
   const text = argOf("text") ?? "hello from social-agent-ts (real X integration test)"
   const accountSel = argOf("account")
+  // 图文：--image <公网可达 URL>（adapter 会 fetch 它取字节 → uploadMedia）。本地文件先经 /media 暴露成 URL。
+  const image = argOf("image")
+  // 发帖形态：--type tweet|thread|article，缺省 tweet。
+  const postType = (argOf("type") as "tweet" | "thread" | "article" | undefined) ?? "tweet"
 
   const accounts = await repos.accounts.listByWorkspace(ws.id)
   let target = accounts.find((a) => a.platform === "X" && (accountSel ? a.id === accountSel || a.name === accountSel || a.name === `@${accountSel}` : a.status === "Connected"))
@@ -165,7 +169,7 @@ async function cmdPost(
   const registry = createPublisherRegistry(publisherConfigFromEnv())
   const service = new PublishingService({ registry, tokenStore, billing, logger: console })
 
-  console.log(`→ 用账号 ${target.id}(${target.name}) 真发一条推：「${text}」`)
+  console.log(`→ 用账号 ${target.id}(${target.name}) 真发一条 ${postType}${image ? "（图文）" : ""}：「${text}」`)
   const result = await service.publishBatch({
     userId: process.env.DEV_FAKE_USER_ID!,
     workspaceId: ws.id,
@@ -173,7 +177,11 @@ async function cmdPost(
     items: [
       {
         target: { platform: "X", accountId: target.id, accountType: "connected" },
-        content: { text },
+        content: {
+          text,
+          x: { postType },
+          ...(image ? { media: [{ kind: "image" as const, url: image }] } : {}),
+        },
       },
     ],
   })
@@ -183,19 +191,40 @@ async function cmdPost(
   else console.log(`\n⚠️ 未发布：outcome=${r.outcome}（详见上方 JSON）`)
 }
 
-/** 把 demo/x-poster/config/accounts.json 里 main.X 的已授权 token 导入项目库（免重新授权即可验发帖路径）。 */
+/**
+ * 把 demo/x-poster/config/accounts.json 里某个槽位的已授权 token 导入项目库（免重新授权即可验发帖路径）。
+ * 用法：seed-from-demo <accounts.json> [--slot main|acct2]。默认 main。
+ * access_token 已过期时，自动用 refresh_token 续一发（会轮换，接管 demo 的 token 链——之后别再用 demo 发同账号）。
+ */
 async function cmdSeedFromDemo(repos: Awaited<ReturnType<typeof createRepositories>>, workspaceId: string) {
   const path = process.argv[3]
-  if (!path) throw new Error("用法：seed-from-demo <demo/x-poster/config/accounts.json>")
+  if (!path) throw new Error("用法：seed-from-demo <demo/x-poster/config/accounts.json> [--slot main|acct2]")
+  const slot = argOf("slot") ?? "main"
   const data = JSON.parse(readFileSync(path, "utf8")) as {
     accounts: Record<string, Record<string, Record<string, unknown>>>
   }
-  const x = data.accounts?.main?.X as Record<string, unknown> | undefined
-  if (!x?.oauth2AccessToken) throw new Error("demo accounts.json 里 main.X 没有 oauth2AccessToken")
+  const x = data.accounts?.[slot]?.X as Record<string, unknown> | undefined
+  if (!x?.oauth2AccessToken) throw new Error(`demo accounts.json 里 ${slot}.X 没有 oauth2AccessToken`)
 
-  // 用现有 access_token 拉一次账号信息拿 x_user_id/username（不改 demo 的文件）。
-  const me = await getMe(String(x.oauth2AccessToken))
-  if (!me?.id) throw new Error("demo 的 access_token 已失效，无法 getMe（请改用 authorize 走真实授权）")
+  let accessToken = String(x.oauth2AccessToken)
+  let refreshToken = x.oauth2RefreshToken ? String(x.oauth2RefreshToken) : null
+  let scope = x.oauth2Scopes ? String(x.oauth2Scopes) : null
+  let expiresAt = Number(x.oauth2ExpiresAt ?? Math.floor(Date.now() / 1000) + 7200)
+
+  let me = await getMe(accessToken)
+  if (!me?.id) {
+    // access_token 过期 → 用 refresh_token 续期（轮换，头号翻车点：新 refresh 覆盖旧的）。
+    if (!refreshToken) throw new Error(`${slot} 的 access_token 失效且无 refresh_token，请改用 authorize 真实授权`)
+    console.log(`· ${slot} access_token 已过期，用 refresh_token 续期中…`)
+    const xapp = buildXApp()
+    const t = await xapp.refresh(refreshToken)
+    accessToken = t.access_token
+    refreshToken = t.refresh_token ?? refreshToken
+    scope = t.scope ?? scope
+    expiresAt = Math.floor(Date.now() / 1000) + (t.expires_in ?? 7200)
+    me = await getMe(accessToken, xapp.config.fetchImpl)
+    if (!me?.id) throw new Error("续期后仍 getMe 失败（refresh_token 可能也失效，请改用 authorize）")
+  }
 
   const account = await repos.accounts.upsertConnectedAccount(workspaceId, {
     platform: "X",
@@ -203,12 +232,12 @@ async function cmdSeedFromDemo(repos: Awaited<ReturnType<typeof createRepositori
     username: me.username ?? String(x.oauth2Username ?? "") ?? null,
     displayName: me.username ? `@${me.username}` : me.id,
     url: me.username ? `https://x.com/${me.username}` : null,
-    accessToken: String(x.oauth2AccessToken),
-    refreshToken: x.oauth2RefreshToken ? String(x.oauth2RefreshToken) : null,
-    scope: x.oauth2Scopes ? String(x.oauth2Scopes) : null,
-    tokenExpiresAt: Number(x.oauth2ExpiresAt ?? Math.floor(Date.now() / 1000) + 7200),
+    accessToken,
+    refreshToken,
+    scope,
+    tokenExpiresAt: expiresAt,
   })
-  console.log(`✅ 已导入 demo 账号：account=${account.id}  @${me.username ?? me.id}`)
+  console.log(`✅ 已导入 demo 账号(${slot})：account=${account.id}  @${me.username ?? me.id}  scope=${scope ?? "?"}`)
 }
 
 main().catch((err: unknown) => {

@@ -9,12 +9,12 @@
 // 串推按「实际条数」抬高成本（见 pricing.estimateProviderCostUsdCents 对 thread 的处理）。
 // 图片：三种形态 P0 均只发文本（v2 media/upload 需 media.write 付费档，常 403，留待联调补，绝不静默降级）。
 
-import type { PublishResult } from "@social/shared"
+import type { MediaRef, PublishResult } from "@social/shared"
 import { PLATFORM_CAPABILITIES } from "@social/shared"
 import { PublisherError, PublisherNotConfiguredError } from "../errors"
 import type { AdapterDeps, PublishContext, SocialPublisher } from "../ports"
 import { composeText } from "../content"
-import { postArticle, postThread, postTweet, splitIntoThreadSegments, X_TWEET_MAX } from "../x/client"
+import { postArticle, postThread, postTweet, splitIntoThreadSegments, uploadMedia, X_TWEET_MAX } from "../x/client"
 
 export interface XConfig {
   /** X API 基址，默认 https://api.twitter.com。 */
@@ -45,7 +45,7 @@ export class XPublisher implements SocialPublisher {
     return this.publishTweet(ctx, token, fetchImpl)
   }
 
-  /** 普通单条推文。 */
+  /** 普通单条推文（含图文：有图片就先上传拿 media_ids）。 */
   private async publishTweet(ctx: PublishContext, token: string, fetchImpl: typeof fetch): Promise<PublishResult> {
     let text: string
     try {
@@ -57,17 +57,38 @@ export class XPublisher implements SocialPublisher {
       }
       throw err
     }
-    const tweet = await postTweet({ accessToken: token, text, apiBaseUrl: this.base, fetchImpl })
+    const mediaIds = await this.uploadImages(ctx.content.media, token, fetchImpl)
+    const tweet = await postTweet({ accessToken: token, text, mediaIds, apiBaseUrl: this.base, fetchImpl })
     return { outcome: "published", platform: "X", accountId: ctx.target.accountId, remoteId: tweet.id, remoteUrl: tweet.url }
   }
 
-  /** 串推：显式分段优先，否则从「正文+hashtags+链接」自动按 ≤280 分段。 */
+  /** 串推：显式分段优先，否则从「正文+hashtags+链接」自动按 ≤280 分段。图片挂到首条。 */
   private async publishThread(ctx: PublishContext, token: string, fetchImpl: typeof fetch): Promise<PublishResult> {
     const explicit = ctx.content.x?.threadSegments?.map((s) => s.trim()).filter(Boolean)
     const segments = explicit && explicit.length > 0 ? explicit : splitIntoThreadSegments(fullText(ctx.content), X_TWEET_MAX)
     if (segments.length === 0) throw new PublisherError("content_invalid", "串推内容为空")
-    const thread = await postThread({ accessToken: token, segments, apiBaseUrl: this.base, fetchImpl })
+    const firstMediaIds = await this.uploadImages(ctx.content.media, token, fetchImpl)
+    const thread = await postThread({ accessToken: token, segments, firstMediaIds, apiBaseUrl: this.base, fetchImpl })
     return { outcome: "published", platform: "X", accountId: ctx.target.accountId, remoteId: thread.id, remoteUrl: thread.url }
+  }
+
+  /** 把 content.media 里的图片（最多 4 张）取字节 → 上传 X → 返回 media_ids。无图返回 undefined。 */
+  private async uploadImages(
+    media: readonly MediaRef[] | undefined,
+    token: string,
+    fetchImpl: typeof fetch,
+  ): Promise<string[] | undefined> {
+    const images = (media ?? []).filter((m) => m.kind === "image" && m.url).slice(0, 4)
+    if (images.length === 0) return undefined
+    const ids: string[] = []
+    for (const img of images) {
+      const res = await fetchImpl(img.url!)
+      if (!res.ok) throw new PublisherError("unsupported_media", `取图失败 ${res.status}：${img.url}`)
+      const bytes = new Uint8Array(await res.arrayBuffer())
+      const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim() || guessMime(img.url!)
+      ids.push(await uploadMedia({ accessToken: token, bytes, mimeType, fetchImpl }))
+    }
+    return ids
   }
 
   /** X Article 长文：标题 + 正文段落（+ hashtags/链接各成一段）。账号非 Premium 会 403。 */
@@ -89,6 +110,13 @@ export class XPublisher implements SocialPublisher {
     const article = await postArticle({ accessToken: token, title, paragraphs, fetchImpl })
     return { outcome: "published", platform: "X", accountId: ctx.target.accountId, remoteId: article.postId, remoteUrl: article.url }
   }
+}
+
+/** 从 URL 扩展名猜图片 MIME（fetch 响应无 content-type 时兜底）。X v2 传图不认 octet-stream。 */
+function guessMime(url: string): string {
+  const ext = url.toLowerCase().split("?")[0]?.split(".").pop() ?? ""
+  const map: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" }
+  return map[ext] ?? "image/jpeg"
 }
 
 /** 串推/长文用的「完整文本」：正文 +（空行）hashtags +（空行）链接，不做 280 上限校验（本就要拆分/长文）。 */

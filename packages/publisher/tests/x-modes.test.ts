@@ -145,6 +145,36 @@ describe("X Article（长文）", () => {
   })
 })
 
+describe("X 图文推文", () => {
+  it("有图片 → 先 /2/media/upload 取 media_id，再发带 media 的推文", async () => {
+    const fetchImpl = vi.fn(async (...args: Parameters<typeof fetch>) => {
+      const u = String(args[0])
+      if (u.startsWith("http://img/")) {
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "image/jpeg" } })
+      }
+      if (u.includes("/2/media/upload")) return jsonResponse({ data: { id: "media-1" } })
+      if (u.includes("/2/tweets")) return jsonResponse({ data: { id: "t1" } })
+      return new Response("unexpected", { status: 500 })
+    })
+    const { svc } = svcWith(fetchImpl)
+    const res = await svc.publishBatch(
+      req([
+        {
+          target: { platform: "X", accountId: "acc-x" },
+          content: { text: "图文推", media: [{ kind: "image", url: "http://img/a.jpg" }] },
+        },
+      ]),
+    )
+    expect(res.results[0].outcome).toBe("published")
+    // 取图 → 传图 → 发推 三个请求都打到了
+    const urls = fetchImpl.mock.calls.map((c) => String(c[0]))
+    expect(urls.some((u) => u.includes("/2/media/upload"))).toBe(true)
+    const tweetCall = fetchImpl.mock.calls.find((c) => String(c[0]).includes("/2/tweets"))!
+    const tweetBody = JSON.parse(String((tweetCall[1] as RequestInit).body))
+    expect(tweetBody.media.media_ids).toEqual(["media-1"])
+  })
+})
+
 describe("X 普通推文超限", () => {
   it("超过 280 字 → content_invalid 且提示改用串推", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ data: { id: "1" } }))
