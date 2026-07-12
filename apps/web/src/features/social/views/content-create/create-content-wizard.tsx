@@ -66,6 +66,7 @@ export function CreatePostWizard({
     addStudioToCalendar,
     publishPostNow,
     pushToast,
+    setAgentSecondary,
   } = useSocial()
   const { t, te } = useLang()
 
@@ -347,6 +348,14 @@ export function CreatePostWizard({
                             </option>
                           ))}
                         </Select>
+                        {/* 直达账号中心：授权新账号 / 断开授权都在那里，避免用户在发布流程里找不到入口。 */}
+                        <button
+                          type="button"
+                          onClick={() => setAgentSecondary("accounts")}
+                          className="mt-1.5 text-xs font-medium text-brand hover:underline"
+                        >
+                          {t("Authorize / manage accounts →", "授权 / 管理账号 →")}
+                        </button>
                       </Field>
                       <Field label={t("Format preset", "格式预设")}>
                         <Select value={current.format} onChange={(e) => applyEdit({ format: e.target.value })}>

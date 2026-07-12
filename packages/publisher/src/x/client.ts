@@ -269,7 +269,17 @@ async function mapXError(res: Response, action: string): Promise<PublisherError>
   }
   if (res.status === 429) return new PublisherError("rate_limited", `X 触发限流（429）：${bodyText}`)
   if (res.status === 401) return new PublisherError("token_expired", `X 授权失效，请重新连接账号（401）：${bodyText}`)
-  if (res.status === 403) return new PublisherError("permission_missing", `X 权限不足（403）：${bodyText}`)
+  if (res.status === 403) {
+    // 「not permitted to perform this action」几乎都是 App 写权限被拿掉：token 有 tweet.write，但 X 后台
+    // App permissions 掉成了 Read（编辑 User authentication settings 时常被悄悄重置）。给出可直接照做的指引。
+    if (/not permitted to perform this action/i.test(bodyText)) {
+      return new PublisherError(
+        "permission_missing",
+        "X 拒绝发帖（403 not permitted）：多半是 X 开发者后台 App 的写权限掉了。请到 X 后台 → 该 App → User authentication settings → 把 App permissions 设为「Read and write」并保存，然后重新授权该账号后再发。",
+      )
+    }
+    return new PublisherError("permission_missing", `X 权限不足（403）：${bodyText}`)
+  }
   return new PublisherError("provider_error", `X ${action}失败 ${res.status}：${bodyText}`)
 }
 
