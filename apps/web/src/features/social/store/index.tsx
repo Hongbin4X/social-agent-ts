@@ -1179,11 +1179,14 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     }
     pushToast(translate("Authorize X in the popup…", "请在弹窗中完成 X 授权…"), "default")
 
-    // 成功感知：出现「不在快照里的已连接 X 账号」= 本次新授权成功。任一路径命中即刷新收尾。
+    // 成功感知有两种情形：
+    //   · 新增账号：出现「不在快照里的已连接 X 账号」——轮询可察觉。
+    //   · 重新授权已连接账号：回调只更新了该账号的 token（状态仍 Connected），轮询**察觉不到**——
+    //     只能靠回调成功页的 postMessage 确认（同源可达时）；跨源时靠「弹窗关闭」给中性提示，token 其实已更新。
     let done = false
     const newlyConnected = (list: Account[]) =>
       list.find((a) => a.platform === "X" && a.status === "Connected" && !prevConnectedIds.has(a.id))
-    const finish = async (fromClose = false) => {
+    const finish = async (reason: "message" | "poll" | "close") => {
       if (done) return
       done = true
       window.removeEventListener("message", onMsg)
@@ -1192,17 +1195,29 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         const { accounts: fresh } = await api.getAccounts()
         setAccounts(fresh)
         const added = newlyConnected(fresh)
-        if (added) pushToast(translate(`X connected: ${added.name}`, `已连接 X:${added.name}`), "success")
-        else if (fromClose)
-          // 弹窗被关但没连上新账号：授权未完成，如实提示（不假装成功）。
-          pushToast(translate("Authorization window closed before completing.", "授权窗口已关闭,未完成授权。"), "default")
+        if (added) {
+          pushToast(translate(`X connected: ${added.name}`, `已连接 X:${added.name}`), "success")
+        } else if (reason === "message") {
+          // 回调 postMessage 确认成功（多为重新授权已连接账号）：token 已更新。
+          pushToast(translate("X account authorized — token updated.", "X 账号授权成功,token 已更新。"), "success")
+        } else if (reason === "close") {
+          // 跨源部署下察觉不到 token 更新：给中性提示,不吓唬也不假装（token 若已授权其实已落库）。
+          pushToast(
+            translate(
+              "Authorization window closed. If you finished authorizing, the token is updated — retry publishing.",
+              "授权窗口已关闭。若你已完成授权,该账号 token 已更新,直接重试发布即可。",
+            ),
+            "default",
+          )
+        }
       } catch (e) {
         console.warn("[store] 刷新账号失败：", (e as Error).message)
       }
     }
-    // 快路径：同源部署时回调成功页 postMessage 过来。
+    // 快路径：同源部署时回调成功页 postMessage 过来（新增/重新授权都能确认）。
     const onMsg = (ev: MessageEvent) => {
-      if (ev?.data && (ev.data as { type?: string }).type === "x-oauth" && (ev.data as { ok?: boolean }).ok) void finish()
+      if (ev?.data && (ev.data as { type?: string }).type === "x-oauth" && (ev.data as { ok?: boolean }).ok)
+        void finish("message")
     }
     window.addEventListener("message", onMsg)
     // 兜底路径：轮询后端账号，出现新的已连接 X 账号即成功；弹窗关闭后再兜一轮；3 分钟超时。
@@ -1212,7 +1227,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       try {
         const { accounts: fresh } = await api.getAccounts()
         if (newlyConnected(fresh)) {
-          void finish()
+          void finish("poll")
           return
         }
       } catch {
@@ -1220,7 +1235,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       }
       if (Date.now() > deadline || popup.closed) {
         clearInterval(poll)
-        if (!done) void finish(true) // 超时/关窗兜底：再核一轮，没新账号则如实提示未完成
+        if (!done) void finish("close") // 超时/关窗兜底：refresh + 中性提示（token 若已授权其实已更新）
       }
     }, 2500)
   }, [pushToast])
