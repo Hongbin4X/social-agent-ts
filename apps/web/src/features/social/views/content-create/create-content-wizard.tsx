@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useSocial } from "@/features/social/store"
 import { useLang } from "@/features/social/i18n"
 import { VARIANT_STATE_LABELS } from "@/features/social/i18n/labels"
-import { ALL_PLATFORMS, type Platform, type PostVariant } from "@social/shared"
+import { ALL_PLATFORMS, type Platform, type PostVariant, type XPostType } from "@social/shared"
 import { Button } from "@/components/ui/button"
 import {
   CreditsPill,
@@ -359,6 +359,27 @@ export function CreatePostWizard({
                         </Select>
                       </Field>
                     </div>
+
+                    {/* X 专属：发帖形态（普通推 / 串推 / 长文）。串推自动按 280 字分段；Article 需发帖账号开通 X Premium。 */}
+                    {current.platform === "X" ? (
+                      <Field label={t("X post type", "X 发帖形态")}>
+                        <Select
+                          value={current.xPostType ?? "tweet"}
+                          onChange={(e) => applyEdit({ xPostType: e.target.value as XPostType })}
+                        >
+                          <option value="tweet">{t("Single tweet", "普通推文")}</option>
+                          <option value="thread">{t("Thread (auto-split)", "串推（自动分段）")}</option>
+                          <option value="article">{t("Article · needs X Premium", "Article 长文 · 需 X Premium")}</option>
+                        </Select>
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          {current.xPostType === "thread"
+                            ? t("Long copy is split into a reply chain (≤280 chars each).", "长文案会自动拆成串推（每条 ≤280 字）。")
+                            : current.xPostType === "article"
+                              ? t("Long-form article. The posting account must have an X Premium subscription, or X returns 403.", "长文形态。发帖账号须开通 X Premium,否则 X 返回 403。")
+                              : t("A single tweet (≤280 chars).", "单条推文（≤280 字）。")}
+                        </p>
+                      </Field>
+                    ) : null}
 
                     <Field label={t("Hook / title", "钩子 / 标题")}>
                       <TextInput value={current.hook} onChange={(e) => applyEdit({ hook: e.target.value })} />

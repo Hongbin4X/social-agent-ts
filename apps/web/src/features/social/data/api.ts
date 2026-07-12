@@ -78,6 +78,14 @@ export const api = {
   updateAccount: (id: string, patch: Record<string, unknown>) =>
     req<{ ok: boolean }>(`/accounts/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 
+  // ── X 账号 OAuth 连接（真授权重定向流）──
+  // 第①步：拿授权链接 + state（codeVerifier 只在后端，绝不下发）。前端新开窗打开 authorizeUrl。
+  startXAuth: () =>
+    req<{ authorizeUrl: string; state: string }>("/connections/x/authorize-url", { method: "POST", body: "{}" }),
+  // 断开 X 授权（清 token、状态置 NotConnected）。
+  disconnectX: (accountId: string) =>
+    req<{ ok: boolean }>(`/connections/x/${accountId}/disconnect`, { method: "POST", body: "{}" }),
+
   // posts
   savePost: (input: {
     projectId: string

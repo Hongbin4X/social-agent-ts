@@ -22,6 +22,7 @@ import type {
   PostStatus,
   PublishMode,
   VariantState,
+  XPostType,
 } from "@social/shared"
 import { sql } from "drizzle-orm"
 import {
@@ -170,6 +171,8 @@ export const ssaPostVariant = mysqlTable(
     publishMode: varchar("publish_mode", { length: 10 }).$type<PublishMode>(),
     state: varchar("state", { length: 30 }).$type<VariantState>(),
     suggestedTime: varchar("suggested_time", { length: 10 }),
+    // X 发帖形态（tweet/thread/article）。仅 platform=X 有意义；空=普通推文。随变体持久化，刷新后仍在。
+    xPostType: varchar("x_post_type", { length: 10 }).$type<XPostType>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

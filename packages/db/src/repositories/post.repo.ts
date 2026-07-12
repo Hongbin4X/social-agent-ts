@@ -150,6 +150,8 @@ export class DrizzlePostRepo implements PostRepo {
         suggestedTime: v.suggestedTime || null,
         // 图片占位符数组：无则存 null（可选字段，历史数据/无插图的 variant 均如此）。
         imageSlots: v.imageSlots ?? null,
+        // X 发帖形态：仅 X 变体有值，其余存 null。
+        xPostType: v.xPostType ?? null,
       })),
     )
     return variants
@@ -194,5 +196,6 @@ function rowToVariant(row: VariantRow): PostVariant {
     suggestedTime: row.suggestedTime ?? "",
     // 回读：DB 里为 null（无插图/历史数据）时统一转为 undefined，与 PostVariant 的可选字段语义对齐。
     imageSlots: (row.imageSlots as ImageSlot[] | null) ?? undefined,
+    xPostType: (row.xPostType as PostVariant["xPostType"]) ?? undefined,
   }
 }

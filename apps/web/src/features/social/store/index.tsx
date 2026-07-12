@@ -931,6 +931,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
             text: [v.hook, stripImageTokens(v.body)].map((s) => s?.trim()).filter(Boolean).join("\n\n"),
             hashtags: v.hashtags?.trim() || undefined,
             linkUrl: v.ctaUrl?.trim() || undefined,
+            // X 发帖形态（普通推/串推/长文）由用户在变体上选定；缺省普通推文。发布层据此走三条不同发帖路径。
+            ...(v.platform === "X" ? { x: { postType: v.xPostType ?? "tweet" } } : {}),
           },
         })
       }
@@ -1151,10 +1153,75 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     [pushToast],
   )
 
-  // 注：真实自动发布要平台 OAuth（发布层 TokenStore，属外部联调 seam）。connect/disconnect 这里落库的是账号「连接状态记录」，
-  // 不代表已拿到真实 token；联调平台 OAuth 后把 connect 改成触发授权流程即可，其余不动。
+  // X 走【真实 OAuth 授权重定向流】：拿授权链接 → 新开窗让用户授权 → X 重定向到后端 GET 回调自动落 token →
+  //   前端靠「postMessage（同源快路径）+ 轮询 getAccounts（跨域兜底路径）」感知连接成功、刷新账号。
+  // 其它平台（IG/FB）OAuth 未接通，暂沿用「只标状态」的原型行为（不假装拿到 token；接通后同样改成触发真授权）。
+  const connectX = useCallback(async () => {
+    let authorizeUrl: string
+    try {
+      const res = await api.startXAuth()
+      authorizeUrl = res.authorizeUrl
+    } catch (e) {
+      // 后端没配 X_CLIENT_ID 会 501；如实告知，不假装已连。
+      pushToast(translate(`Cannot start X authorization: ${(e as Error).message}`, `无法发起 X 授权：${(e as Error).message}`), "warn")
+      return
+    }
+    const popup = window.open(authorizeUrl, "x-oauth", "width=600,height=760,noopener=no")
+    if (!popup) {
+      pushToast(translate("Popup blocked — allow popups and retry.", "弹窗被拦截,请允许弹窗后重试。"), "warn")
+      return
+    }
+    pushToast(translate("Authorize X in the popup…", "请在弹窗中完成 X 授权…"), "default")
+
+    // 成功感知：任一路径命中即刷新账号并收尾。
+    let done = false
+    const finish = async () => {
+      if (done) return
+      done = true
+      window.removeEventListener("message", onMsg)
+      clearInterval(poll)
+      try {
+        const { accounts: fresh } = await api.getAccounts()
+        setAccounts(fresh)
+        const x = fresh.find((a) => a.platform === "X" && a.status === "Connected")
+        if (x) pushToast(translate(`X connected: ${x.name}`, `已连接 X:${x.name}`), "success")
+      } catch (e) {
+        console.warn("[store] 刷新账号失败：", (e as Error).message)
+      }
+    }
+    // 快路径：同源部署时回调成功页 postMessage 过来。
+    const onMsg = (ev: MessageEvent) => {
+      if (ev?.data && (ev.data as { type?: string }).type === "x-oauth" && (ev.data as { ok?: boolean }).ok) void finish()
+    }
+    window.addEventListener("message", onMsg)
+    // 兜底路径：轮询后端账号，X 变 Connected 即成功；弹窗关闭后再兜一轮；3 分钟超时。
+    const deadline = Date.now() + 3 * 60_000
+    const poll = setInterval(async () => {
+      if (done) return
+      try {
+        const { accounts: fresh } = await api.getAccounts()
+        if (fresh.find((a) => a.platform === "X" && a.status === "Connected")) {
+          void finish()
+          return
+        }
+      } catch {
+        /* 轮询期间的瞬时错误忽略，继续轮询 */
+      }
+      if (Date.now() > deadline || popup.closed) {
+        clearInterval(poll)
+        // 弹窗关了还没连上：再兜最后一轮（授权刚落库、状态可能刚变）。
+        if (popup.closed && !done) void finish()
+      }
+    }, 2500)
+  }, [pushToast])
+
   const connectAccount = useCallback(
     async (platform: Platform) => {
+      if (platform === "X") {
+        await connectX()
+        return
+      }
+      // 非 X：OAuth 未接通，沿用原型「只标连接状态记录」行为（不代表已拿 token）。
       const target = accounts.find((a) => a.platform === platform && a.status === "NotConnected")
       if (!target) return
       const patch = { status: "Connected", type: "connected", capabilities: "Auto publishing available", expiresAt: "2026-12-31" } as const
@@ -1166,21 +1233,26 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       }
       pushToast(translate(`${platform} connected`, `已连接 ${platform}`), "success")
     },
-    [accounts, pushToast],
+    [accounts, pushToast, connectX],
   )
 
   const disconnectAccount = useCallback(
     async (id: string) => {
-      const patch = { status: "NotConnected", capabilities: "Not connected" } as const
-      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch, expiresAt: undefined } : a)))
+      const target = accounts.find((a) => a.id === id)
+      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, status: "NotConnected", capabilities: "Not connected", expiresAt: undefined } : a)))
       try {
-        await api.updateAccount(id, patch)
+        // X 已连接的账号走后端真断开（清 token）；其余仅落状态。
+        if (target?.platform === "X" && target.status === "Connected") {
+          await api.disconnectX(id)
+        } else {
+          await api.updateAccount(id, { status: "NotConnected", capabilities: "Not connected" })
+        }
       } catch (e) {
-        console.warn("[store] 账号状态落库失败：", (e as Error).message)
+        console.warn("[store] 断开账号失败：", (e as Error).message)
       }
       pushToast(translate("Account disconnected", "已断开账号"), "default")
     },
-    [pushToast],
+    [accounts, pushToast],
   )
 
   const refreshAccount = useCallback(

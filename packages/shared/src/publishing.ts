@@ -12,7 +12,7 @@
 //   §16  发布计费（12 credits + provider cost per auto publish）→ providerCostCredits 字段
 //   §4   所有任务关联 userId/workspaceId/projectId/billingUsageRecordId → PublishRequest 的账务上下文
 
-import type { AccountType, Platform, PublishMode } from "./types"
+import type { AccountType, Platform, PublishMode, XPostType } from "./types"
 import { AUTO_PLATFORMS } from "./constants"
 
 /** 单个平台的发布能力事实（文案上限、媒体支持、是否支持自动发布）。 */
@@ -80,6 +80,17 @@ export interface MediaRef {
   alt?: string
 }
 
+/** X 发布形态的可选参数（前端按用户选择填；缺省由 adapter 从正文推导）。XPostType 定义见 ./types。 */
+export interface XPublishOptions {
+  postType: XPostType
+  /** 串推分段文本；缺省时 adapter 按 ≤280 字自动从正文分段。 */
+  threadSegments?: string[]
+  /** Article 标题；缺省取正文首行/hook。 */
+  articleTitle?: string
+  /** Article 正文（纯段落，按空行分块）；缺省用 content.text。 */
+  articleBody?: string
+}
+
 /** 要发布的内容（已按平台适配好的单条 variant，见 spec §14.6 PostVariant）。 */
 export interface PublishContent {
   text: string
@@ -89,6 +100,8 @@ export interface PublishContent {
   media?: MediaRef[]
   /** 定时发布时间（ISO）。缺省=立即发布。 */
   scheduledAt?: string
+  /** X 专用发布形态（普通推/串推/长文）。仅 X adapter 读取；缺省普通推文。 */
+  x?: XPublishOptions
 }
 
 /** 批量发布请求里的单项。 */

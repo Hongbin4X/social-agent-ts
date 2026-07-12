@@ -11,16 +11,33 @@
 //   · 聚合服务模式：按 profile/月订阅、非按帖，单帖边际成本≈0 ⇒ 这里记 0，月费在订阅层另算。
 
 import type { Platform, PublishContent } from "@social/shared"
+import { splitIntoThreadSegments, X_TWEET_MAX } from "./x/client"
 
-/** 估算某平台发一条内容的第三方成本（美分）。带链接会显著抬高 X 的成本。 */
+/** 估算某平台发一条内容的第三方成本（美分）。带链接会显著抬高 X 的成本；串推按实际条数累加。 */
 export function estimateProviderCostUsdCents(platform: Platform, content: PublishContent): number {
   switch (platform) {
-    case "X":
-      // 含链接（linkUrl 或正文里带 http）走 $0.20 档，否则 $0.015 档。
-      return hasLink(content) ? 20 : 1.5
+    case "X": {
+      // 单条成本：含链接（linkUrl 或正文里带 http）走 $0.20 档，否则 $0.015 档。
+      const perTweet = hasLink(content) ? 20 : 1.5
+      // 串推是 N 条推文，X 按条收费——成本 ×条数；article 是一次发布，按单条计。
+      const count = xTweetCount(content)
+      return perTweet * count
+    }
     default:
       return 0
   }
+}
+
+/** X 本次发布实际会产生几条推文（thread=分段数，其余=1），用于按条估算成本。 */
+function xTweetCount(content: PublishContent): number {
+  if (content.x?.postType !== "thread") return 1
+  const explicit = content.x.threadSegments?.map((s) => s.trim()).filter(Boolean)
+  if (explicit && explicit.length > 0) return explicit.length
+  const parts: string[] = []
+  if (content.text?.trim()) parts.push(content.text.trim())
+  if (content.hashtags?.trim()) parts.push(content.hashtags.trim())
+  if (content.linkUrl?.trim()) parts.push(content.linkUrl.trim())
+  return Math.max(1, splitIntoThreadSegments(parts.join("\n\n"), X_TWEET_MAX).length)
 }
 
 function hasLink(content: PublishContent): boolean {

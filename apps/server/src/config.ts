@@ -14,6 +14,8 @@ try {
 export interface ServerConfig {
   port: number
   publicBaseUrl: string
+  /** 应用对外公网入口（如 https://x.broly.ai）。X OAuth 成功回调页据此 postMessage 回前端；留空则 postMessage 到 "*"。 */
+  appPublicUrl?: string
   /** 本地开发旁路：无 GLBGPT JWT 时用它当 userId。生产留空 = 关闭旁路，必须走真实鉴权。 */
   devFakeUserId?: string
   /** 本地媒体落盘目录（LocalFsMediaStorage）。 */
@@ -24,6 +26,7 @@ export function serverConfigFromEnv(env = process.env): ServerConfig {
   return {
     port: Number(env.PORT ?? 8091),
     publicBaseUrl: env.PUBLIC_BASE_URL ?? "http://localhost:8091",
+    appPublicUrl: env.APP_PUBLIC_URL?.trim() || undefined,
     devFakeUserId: env.DEV_FAKE_USER_ID || undefined,
     mediaLocalDir: env.MEDIA_LOCAL_DIR || undefined,
   }

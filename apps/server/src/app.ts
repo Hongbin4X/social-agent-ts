@@ -9,7 +9,7 @@ import { Hono } from "hono"
 import { serveStatic } from "@hono/node-server/serve-static"
 import { CREDIT_COSTS } from "@social/shared"
 import { publishRoutes } from "./routes/publish"
-import { connectionRoutes } from "./routes/connections"
+import { connectionRoutes, handleXCallbackRedirect } from "./routes/connections"
 import { type AppEnv, authMiddleware } from "./auth"
 import { serverConfigFromEnv } from "./config"
 import { workspaceRoutes } from "./routes/workspace"
@@ -32,6 +32,11 @@ app.use(
 
 // 占位：把共享的计费表暴露出来，证明 @social/shared 在前后端间已打通。真实计费预扣/回写接 GLBGPT 后再实现。
 app.get("/api/billing/credit-costs", (c) => c.json(CREDIT_COSTS))
+
+// X OAuth 真回调重定向入口 —— X 把【用户浏览器】直接重定向到这里，不带我方 JWT。
+// 必须免鉴权，故注册在下面的 auth 中间件【之前】：先命中它、直接回结果页，永不进入 auth。
+// 身份靠 state 对号（pending 里存了 workspaceId），安全性不依赖 JWT。
+app.get("/api/connections/x/callback", handleXCallbackRedirect)
 
 // ── 领域路由（前端全部操作的接口）。鉴权中间件解析 userId（本地走 DEV_FAKE_USER_ID）。──
 // 账号连接（/api/connections）需要 workspace 上下文（授权/回调/断开都按 workspace 归属），故也纳入鉴权。

@@ -56,6 +56,18 @@ export {
   type StartAuthorizationResult,
 } from "./x/xapp"
 
+// X v2 发帖客户端（三种形态的纯函数：单条/串推/长文），adapter 与联调 CLI 复用。
+export {
+  postTweet,
+  postThread,
+  postArticle,
+  splitIntoThreadSegments,
+  X_TWEET_MAX,
+  type PostedTweet,
+  type PostedThread,
+  type PostedArticle,
+} from "./x/client"
+
 // adapter 与其配置类型（一般不用直接 new，但联调/自定义装配时可能要）。
 export { XPublisher, type XConfig } from "./adapters/x"
 export { MetaPublisher, type MetaConfig } from "./adapters/meta"

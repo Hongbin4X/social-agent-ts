@@ -1,0 +1,1 @@
+ALTER TABLE `ssa_post_variant` ADD `x_post_type` varchar(10);

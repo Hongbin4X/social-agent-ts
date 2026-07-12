@@ -35,6 +35,15 @@ export type AccountType = "manual" | "connected"
 
 export type PublishMode = "auto" | "manual"
 
+/**
+ * X（Twitter）发布形态——用户发帖时选「怎么发」：
+ * - tweet  ：普通单条推文（缺省，Free 档即可）。
+ * - thread ：串推（长内容拆多条、后条 reply 前条串成 thread）。
+ * - article：X Articles 长文。**硬门槛：发帖账号须是 X Premium 订阅者**，否则 X 直接 403。
+ * 仅 X 生效；其它平台忽略。详见 publishing.ts 的 XPublishOptions。
+ */
+export type XPostType = "tweet" | "thread" | "article"
+
 export type VariantState = "Valid" | "Needs edits" | "Manual fallback" | "Unsupported"
 
 export type ContentGoal =
@@ -135,6 +144,8 @@ export interface PostVariant {
   suggestedTime: string
   /** 内联配图槽（image 模式生成/编辑）；正文用 [[img:ref]] 标记位置。 */
   imageSlots?: ImageSlot[]
+  /** X 专用：本变体发帖形态（普通推/串推/长文）。仅 platform=X 有意义；缺省普通推文。 */
+  xPostType?: XPostType
 }
 
 export interface SocialPost {
