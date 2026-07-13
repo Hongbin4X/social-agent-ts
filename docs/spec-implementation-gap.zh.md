@@ -75,10 +75,10 @@ Gap 分三类：**A 实现已超出/偏离 spec（文档待更新）**、**B spe
    - 7-day plan：`api.ts` 加 plan 方法 → `store.generatePlan` 改调 `POST /api/generate/plan`（现在是 mock）。
    - 运营建议：`api.ts` 加 recommendations 方法 → `store.generateSuggestions` 改调 `POST /api/generate/recommendations`（现在是 mock）。
 2. **补「排期到点自动发」（B3）**：加一个调度器（cron / worker / 队列）读 `ssa_calendar_job.fires_at` 到点触发 `publishBatch`。否则「定时发布」名不副实。属需产品/架构决策的能力缺口（是否 P0 必须）。
-3. **更新 spec 与设计文档（把 A 类 gap 回灌）**：
-   - 主 spec：§10.2 增补「X 发帖形态选择」；§14.6 补 `xPostType` / `imageSlots`；§11 增补 X 反垃圾失败态（C1）与 Article/Premium（C2）。
-   - `x-real-auth-posting-design.md`：§1/§3.4/§3.6 从「paste-back / 无前端 / 纯文本 / 127.0.0.1」更新为现状（真回调重定向 / 前端 UI / 图文 / IP·域名回调）。
-   - `social-platform-publishing-integration.zh.md`：§4 X adapter 更新为三形态 + 图文；§5 计费从「抛错桩」更正为「本地账本」。
+3. **更新设计文档（把 A 类 gap 回灌）**：
+   - ⚠️ **`super-social-agent-requirement-spec-p0.zh.md`（主 P0 需求 spec）按用户决定（2026-07-13）暂时冻结、不改**。下列本应回灌主 spec 的点（§10.2「X 发帖形态选择」、§14.6 `xPostType`/`imageSlots`、§11 X 反垃圾失败态 C1 与 Article/Premium C2）先记录在本 gap 文档，待解冻后再回灌。
+   - `x-real-auth-posting-design.md`（设计文档，可改）：§1/§3.4/§3.6 从「paste-back / 无前端 / 纯文本 / 127.0.0.1」更新为现状（真回调重定向 / 前端 UI / 图文 / IP·域名回调）。
+   - `social-platform-publishing-integration.zh.md`（集成文档，可改）：§4 X adapter 更新为三形态 + 图文；§5 计费从「抛错桩」更正为「本地账本」。
 4. **明确 IG/FB 目标态 vs 现状（B4）**：spec §3 标注「自动发布」为目标、当前未接通，避免验收口径冲突。
 5. **接外部依赖（B5/B6/B7）**：真 GLBGPT 计费、真 JWT、各平台 analytics——端口已抽象，联调时换适配器即可，非 P0 独立开发阻塞。
 6. **维护本文件为 living gap register**：每跨越一个缺口就回本表勾掉并同步 spec。
