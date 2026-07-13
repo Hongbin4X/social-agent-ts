@@ -57,19 +57,24 @@ packages/shared/src/publishing.ts     发布层数据契约（前后端 + publis
 
 packages/publisher/                    发布 / 分发层（@social/agent「生成」的姊妹包「分发」）
   src/ports.ts                         SocialPublisher 端口 + 注入端口 TokenStore / BillingGateway / MediaResolver
-  src/adapters/x.ts                    X 直连（POST /2/tweets）
-  src/adapters/meta.ts                 Instagram（两步）/ Facebook（/feed）直连
+  src/adapters/x.ts                    X 直连：按 content.x.postType 分发【普通推 / 串推 / Article】+ 图文取图上传
+  src/x/client.ts                      X v2 客户端：postTweet / postThread(reply链) / postArticle(草稿→发布) / uploadMedia
+  src/x/oauth.ts, src/x/xapp.ts        OAuth2+PKCE 纯函数 + XApp 封装（授权/换token/续期）
+  src/adapters/meta.ts                 Instagram（两步）/ Facebook（/feed）直连【骨架，未接 OAuth】
   src/adapters/manual-fallback.ts      TikTok/YouTube/Reddit → manual_fallback
   src/adapters/aggregator.ts           聚合服务实现（同一 port 的另一种后端）
   src/service.ts                       PublishingService 编排：路由 → 连接 → 预扣 → 发布 → 结算/退款
   src/config.ts                        createPublisherRegistry(config) 装配（direct / aggregator 切换）
-  src/pricing.ts                       provider cost 估算（美分）
-  tests/publishing.test.ts             路由/计费/未配置/成本的确定性测试（10 例全绿）
+  src/pricing.ts                       provider cost 估算（美分；串推按条数累加）
+  tests/publishing.test.ts + x-modes.test.ts   路由/计费/三形态/图文/成本 的确定性测试
 
 apps/server/src/
-  services/publishing.ts               装配 PublishingService（现注入"联调桩"，如实暴露未接通）
+  services/publishing.ts               装配真实 DbTokenStore + LocalProviderCostBilling（X 已真接通；IG/FB 无 token 返 not_connected）
+  services/token-store.ts              DbTokenStore（读时自动续期+轮换写回）+ LocalProviderCostBilling（本地账本）
+  services/x-auth.ts                   XApp 单例 + 内存 PendingAuthStore
   routes/publish.ts                    POST /api/publish（批量发布）+ GET /api/publish/capabilities
-  routes/connections.ts                GET /api/connections/requirements + :platform/authorize-url（OAuth 脚手架）
+  routes/connections.ts                完整真路由：POST /x/authorize-url、免鉴权 GET /x/callback（真回调重定向）、
+                                       POST /x/callback（paste-back 兜底）、POST /x/:id/disconnect、GET /requirements
 ```
 
 ### 发布一条内容的流水线（`PublishingService.publishOne`）
@@ -81,16 +86,17 @@ apps/server/src/
 5. provider cost 预扣（仅 X 这类有第三方成本的平台）
 6. 调 adapter 真实发布：成功 → 结算 + 回写 `providerCostCredits`；失败/手动 → 退款 + 落 `failed`（**绝不掩盖**）
 
-### 端到端实测（脚手架阶段，联调桩下）
+### 端到端实测（2026-07-13 更新：X 已真接通并真机发出）
 
 ```
 POST /api/publish  [TikTok, X, Facebook]
 → TikTok    : manual_fallback / platform_manual_only     （产品要求的一等结果）
-→ X         : failed / not_connected                     （诚实：账号还没连 OAuth）
-→ Facebook  : failed / not_connected
-totalProviderCostCredits: 0
+→ X         : published  { remoteUrl }                    （真发！账号已真 OAuth 连接，含图文/串推/长文）
+→ Facebook  : failed / not_connected                     （诚实：IG/FB 还没接 OAuth）
 ```
-即：**手动平台已经真跑通，自动平台如实报"未接通"而不是假成功**——这就是给联调留的、可信的接缝。
+即：**手动平台走兜底、X 已真发、IG/FB 如实报"未接通"而不是假成功**。X 真机验证见飞书文档《X 发推：实现程度与注意事项》。
+
+> ⚠️ X 发帖注意：**营销文案 + 多话题标签 + 推广链接**三样叠满会被 X 反垃圾拦截返回 `403 not permitted`（内容问题，非授权/代码问题）；Article 形态需发帖账号开通 X Premium。详见飞书文档 / gap 台账 §C。
 
 ---
 
@@ -98,18 +104,19 @@ totalProviderCostCredits: 0
 
 - 每次自动发布的 provider cost 走 `BillingGateway`：**预扣（reserve）→ 执行 → 按实结算（settle）/ 失败退款（refund）**。
 - 发布动作本身的 12 credits（spec §16）在前端"确认发布"时先向计费系统预扣，凭证 `billingReservationId` 透传到 `POST /api/publish`。
-- 现在 `apps/server/src/services/publishing.ts` 里的 `BillingGateway` 是**桩，一旦被调用即报错**，杜绝静默假扣；接 GLBGPT 计费系统后替换为真实现即可（其余代码不动）。
+- 现在 `apps/server/src/services/token-store.ts` 里的 `BillingGateway` 实现是 **`LocalProviderCostBilling` 本地账本**（2026-07-13 更新，原文曾为「桩，一调即抛」）：reserve / settle / refund 如实记 `ssa_billing_usage_record`（有 `provider_cost` 十进制列 + status），占位换算 1¢≈1 credit。**不做真实余额扣减、不假称对接 GLBGPT**；接 GLBGPT 计费系统后替换为真实现即可（其余代码不动）。
 
 ---
 
 ## 6. 联调 Checklist（每个自动发布平台要办的事）
 
-**X**
-- [ ] 建 X Developer App，拿 OAuth2（PKCE）client_id / secret，配 redirect_uri
-- [ ] 申请 scopes：`tweet.read` `tweet.write` `users.read` `offline.access`
-- [ ] 开通付费（按次付费或遗留档），确认预算（带链接 $0.20/条）
-- [ ] 实现 `TokenStore`：连接时存 access/refresh token，发布时读取并按需刷新
-- [ ] 媒体上传（v1.1 `media/upload`）——若要发图
+**X**（2026-07-13 更新：代码侧已全部落地，剩外部/运营事项）
+- [x] 建 X Developer App，拿 OAuth2（PKCE）client_id / secret，配 redirect_uri（复用 demo 应用，回调已改为 `https://<公网>/api/connections/x/callback`）
+- [x] 申请 scopes：`tweet.read` `tweet.write` `users.read` `media.write` `offline.access`
+- [ ] 开通付费（按次付费或遗留档），确认预算（带链接 $0.20/条）——**外部/运营决策**
+- [x] 实现 `TokenStore`：`DbTokenStore` 连接时存 access/refresh token，发布时读取并自动续期+轮换写回
+- [x] 媒体上传：已用 v2 `POST /2/media/upload` 实现图文（≤4 张，需 media.write）
+- [x] 发帖形态：普通推 / 串推 / Article 三种已落地（Article 需账号 X Premium）
 
 **Instagram / Facebook**
 - [ ] 建 Meta App，走 Facebook Login，配 redirect_uri

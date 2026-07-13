@@ -3,6 +3,26 @@
 > 日期：2026-07-10 ｜ 分支：`x-real-auth-posting`（基于 master f498b50 的 worktree）
 > 参考实现：`/home/ec2-user/laihongbin/demo/x-poster`（TS，OAuth2+PKCE，已实测跑通一个账号的授权+发帖）
 
+## 0. 现状更新（2026-07-13，实现已超出本设计；与下文冲突处以本节为准）
+
+本设计（2026-07-10）当时定的三项务实决策——**paste-back 授权 / 纯文本 / 无前端 UI**——已在后续迭代中被更完整的实现取代。**当前 master `fe31cd3` 的真实现状：**
+
+- **授权 = 真回调重定向**（不再是 paste-back）：免鉴权 `GET /api/connections/x/callback`（注册在鉴权中间件之前，靠 state 对号），X 授权后浏览器直接跳回、自动换 token 落库；前端账号中心有「**添加授权账号 / 断开授权**」UI（弹窗授权 + 轮询/postMessage 感知）；paste-back 的 `POST /x/callback` 仅保留作兜底。
+- **回调地址** = `https://52.54.122.204/api/connections/x/callback`（同时支持 `x.broly.ai`），走 nginx（`deploy/nginx/social-agent.conf`），env `X_REDIRECT_URI` / `APP_PUBLIC_URL`。不再是 `http://127.0.0.1:8765/callback`。
+- **发帖形态 = 三种**（前端可选、随帖持久化 `ssa_post_variant.x_post_type`）：**普通推**（单条，超 280 字提示改串推）、**串推**（reply 链自动/显式分段）、**Article**（`/2/articles/draft`→`/publish` 长文）。
+- **图文 = 已实现**（本设计原列为「非目标」）：`/2/media/upload` 拿 media_id 再发（≤4 张，需 media.write）；普通推与串推首条支持。已真机发出图文推验证。
+- 计费仍为 `LocalProviderCostBilling` 本地账本（本设计 §3.5 已述），未接真实 GLBGPT 扣费。
+
+**实测已知约束 / 注意事项（2026-07-12/13 真机联调）：**
+
+- **X 反垃圾 / 反硬广拦截**：一条推里【营销话术】+【多话题标签】+【推广链接】三样叠满 → X 返回 `403 not permitted` 拒发（任意两样一般放行）。「自动生成营销内容」天生易踩——建议发布层做「遇 403 自动降级重试」（去链接/减标签重发；**此项尚未实现**，见 gap 台账）。
+- **Article 需 X Premium**：发帖账号非 Premium 时 `/2/articles/draft` 直接 403。
+- **token 一次性轮换**：refresh_token 轮换，同一账号不可被两个系统（如 demo 与本项目）同时持有刷新，否则互踢下线。
+- **改 X 后台 App 权限后需重新授权**：旧 token 冻结在原权限，自动 refresh 不解决。
+- **裸 IP 回调有证书告警**（证书 `*.broly.ai` 不覆盖 IP）；固定域名 `x.broly.ai`（DNS 在 Cloudflare）可消除。
+
+> 下面 §1–§5 为 2026-07-10 的原始设计记录，保留作历史与决策溯源；现状以本节为准。
+
 ## 1. 目标与范围（用户已拍板）
 
 把 demo 里**已验证**的「X 账号授权 + 发帖」模块，集成进本项目真实链路，做到：**用户授权一次 → 平台长期、自动、无感地替他发帖**。
