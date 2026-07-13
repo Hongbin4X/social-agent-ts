@@ -13,9 +13,21 @@ out/
 # turbo
 .turbo/
 
+# 部署脚本日志(redeploy.sh 输出，不入库)
+.deploy-logs/
+# 本地 TODO/进展记录(本地汇报用，不入库)
+/TODO.md
+
 # 本地媒体落盘（LocalFsMediaStorage；字节不入库，DB 只存引用）
 .media/
 **/.media/
+
+# 本地测试/调试截图：统一放 tmp/screenshots/（随下方 /tmp/ 忽略）；
+# 根目录散落的调试图（bug.png / image.png 等）也一并忽略，防误入库。app 图标在 apps/web/public 不受影响。
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
 
 # 环境变量（第三方 key 明文写在各包内的 application 配置里，不在此忽略）
 .env
@@ -33,3 +45,4 @@ __v0_jsx-dev-runtime.ts
 .snowflake/
 .v0-trash/
 .vercel/
+/tmp/
