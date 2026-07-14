@@ -18,6 +18,7 @@ import { accountRoutes } from "./routes/accounts"
 import { postRoutes } from "./routes/posts"
 import { calendarRoutes } from "./routes/calendar"
 import { generateRoutes } from "./routes/generate"
+import { authRoutes } from "./routes/auth"
 
 export const app = new Hono<AppEnv>()
 
@@ -38,11 +39,18 @@ app.get("/api/billing/credit-costs", (c) => c.json(CREDIT_COSTS))
 // 身份靠 state 对号（pending 里存了 workspaceId），安全性不依赖 JWT。
 app.get("/api/connections/x/callback", handleXCallbackRedirect)
 
+// 登录（免鉴权）—— 用户此时还没 token。故【不】把 /api/auth 加进下面的鉴权 base 列表。
+// 前端 /bff/auth/email/{send-code,login} → 这里 → chatpal，登录成功回 JWT 给前端存本地。
+app.route("/api/auth", authRoutes)
+
 // ── 领域路由（前端全部操作的接口）。鉴权中间件解析 userId（本地走 DEV_FAKE_USER_ID）。──
 // 账号连接（/api/connections）需要 workspace 上下文（授权/回调/断开都按 workspace 归属），故也纳入鉴权。
 // 发布（/api/publish）也需 workspace 上下文：路由从鉴权取 userId/workspaceId（不信任前端身份），
 //   故必须纳入鉴权中间件，且中间件要在 app.route 之前注册，否则请求先被路由处理、拿不到 userId（会误报「先创建工作区」）。
-const auth = authMiddleware(serverConfigFromEnv().devFakeUserId)
+const auth = authMiddleware({
+  jwtSecret: serverConfigFromEnv().jwtSecret,
+  devFakeUserId: serverConfigFromEnv().devFakeUserId,
+})
 for (const base of [
   "/api/publish",
   "/api/workspace",

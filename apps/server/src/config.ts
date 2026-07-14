@@ -16,10 +16,24 @@ export interface ServerConfig {
   publicBaseUrl: string
   /** 应用对外公网入口（如 https://x.broly.ai）。X OAuth 成功回调页据此 postMessage 回前端；留空则 postMessage 到 "*"。 */
   appPublicUrl?: string
-  /** 本地开发旁路：无 GLBGPT JWT 时用它当 userId。生产留空 = 关闭旁路，必须走真实鉴权。 */
+  /** 平台共享 JWT 密钥（chatpal/ai-api 同一把，原始 UTF-8 字节、不 base64）。配了才验签 Bearer；见飞书子文档① A0。 */
+  jwtSecret?: string
+  /** 本地开发旁路：无平台 JWT 时用它当 userId。生产/联调留空 = 关闭旁路，必须走真实鉴权（与验签同批）。 */
   devFakeUserId?: string
   /** 本地媒体落盘目录（LocalFsMediaStorage）。 */
   mediaLocalDir?: string
+  /** 计费模式：stub=本地账本(不真扣) / real=接 ai-api 真扣。默认 stub。见飞书子文档②改造清单 #6。 */
+  billingMode: "stub" | "real"
+  /** ai-api 根地址（real 模式必需），如 http://<测试服内网>:8070；适配器自拼 /ai-api/ai/bill/*。 */
+  aiApiBaseUrl?: string
+  /** 账单归属 productNo（本项目复用 glbgpt）。 */
+  billingProductNo: string
+  /** 文本计费模型（robot 表 tokens 行，如 gpt-5.4；reserve 的 checkPermission 与 settle 的 recordBill 用）。 */
+  textBillingModel: string
+  /** chatpal 根地址（登录代理用），如 http://<测试服内网>:8089；后端自拼 /user-api/user/*。空=登录路由如实 501。 */
+  chatpalBaseUrl?: string
+  /** 平台渠道标识（chatpal emailLogin/sendEmailVerifyCode 的 channel 字段）。默认 chatpal。 */
+  platformChannel: string
 }
 
 export function serverConfigFromEnv(env = process.env): ServerConfig {
@@ -27,8 +41,15 @@ export function serverConfigFromEnv(env = process.env): ServerConfig {
     port: Number(env.PORT ?? 8091),
     publicBaseUrl: env.PUBLIC_BASE_URL ?? "http://localhost:8091",
     appPublicUrl: env.APP_PUBLIC_URL?.trim() || undefined,
+    jwtSecret: env.JWT_SECRET?.trim() || undefined,
     devFakeUserId: env.DEV_FAKE_USER_ID || undefined,
     mediaLocalDir: env.MEDIA_LOCAL_DIR || undefined,
+    billingMode: env.BILLING_MODE === "real" ? "real" : "stub",
+    aiApiBaseUrl: env.AI_API_BASE_URL?.trim() || undefined,
+    billingProductNo: env.BILLING_PRODUCT_NO?.trim() || "glbgpt",
+    textBillingModel: env.TEXT_BILLING_MODEL?.trim() || "gpt-5.4",
+    chatpalBaseUrl: env.CHATPAL_BASE_URL?.trim() || undefined,
+    platformChannel: env.PLATFORM_CHANNEL?.trim() || "chatpal",
   }
 }
 

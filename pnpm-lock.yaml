@@ -41,6 +41,9 @@ importers:
       hono:
         specifier: ^4.6.14
         version: 4.12.28
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
     devDependencies:
       '@types/node':
         specifier: ^24

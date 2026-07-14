@@ -8,6 +8,14 @@
 - 架构决策：[`docs/superpowers/specs/2026-07-09-social-agent-monorepo-architecture-design.md`](docs/superpowers/specs/2026-07-09-social-agent-monorepo-architecture-design.md)
 - 发布集成 & 成本：[`docs/social-platform-publishing-integration.zh.md`](docs/social-platform-publishing-integration.zh.md)
 
+### 飞书知识库（团队文档）
+
+项目主页 **Social Agent**：<https://legaldao.feishu.cn/wiki/MwNVwfa20iYHACk2rg5cXIz7nlc>
+
+其下按模块分子文档：`X 发推` / `docs Spec 架构` / **`计费鉴权联调 · 总览`**（含 4 子文档：① 平台接口与计费实现、② 改造与设计决策、③ 数据与存储、④ 落地手册）/ …
+
+> 同步/更新飞书文档时，从这个主页往下找对应模块，别硬记子文档链接。
+
 ---
 
 ## 目录（monorepo）

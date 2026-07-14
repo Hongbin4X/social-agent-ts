@@ -1,6 +1,7 @@
 // 前端 → 后端 API 客户端。
-// 走 Next 反代的同源 /bff/*（→ 后端 /api/*）。本地开发用固定 dev userId（对齐后端 DEV_FAKE_USER_ID）。
-// 生产改为携带 GLBGPT JWT，这里只需换 authHeaders() 一处。
+// 走 Next 反代的同源 /bff/*（→ 后端 /api/*）。
+// 身份（2026-07-14 联调）：登录后带 Authorization: Bearer <平台 JWT>（存 localStorage）；
+//   无 token 时本地兜底 x-user-id=DEV_USER_ID（对齐后端 DEV_FAKE_USER_ID 旁路）。见飞书子文档②改造清单 #3。
 
 import type {
   Account,
@@ -18,8 +19,26 @@ import type {
 const DEV_USER_ID = process.env.NEXT_PUBLIC_DEV_USER_ID ?? "1000000000000000001"
 const BFF = "/bff"
 
+// 平台 JWT：chatpal 登录成功后 setPlatformToken 写入 localStorage；请求据此带 Bearer。SSR 安全（无 window 返回 null）。
+const PLATFORM_TOKEN_KEY = "platform_jwt"
+
+export function getPlatformToken(): string | null {
+  if (typeof window === "undefined") return null
+  return window.localStorage.getItem(PLATFORM_TOKEN_KEY)
+}
+export function setPlatformToken(token: string): void {
+  if (typeof window !== "undefined") window.localStorage.setItem(PLATFORM_TOKEN_KEY, token)
+}
+export function clearPlatformToken(): void {
+  if (typeof window !== "undefined") window.localStorage.removeItem(PLATFORM_TOKEN_KEY)
+}
+
 function authHeaders(): Record<string, string> {
-  return { "x-user-id": DEV_USER_ID, "Content-Type": "application/json" }
+  const base: Record<string, string> = { "Content-Type": "application/json" }
+  const token = getPlatformToken()
+  if (token) return { ...base, Authorization: `Bearer ${token}` }
+  // 本地开发兜底：无登录 token 时用固定 dev userId（对齐后端 DEV_FAKE_USER_ID 旁路）。
+  return { ...base, "x-user-id": DEV_USER_ID }
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -53,7 +72,27 @@ export interface ApiWorkspace {
 }
 
 // ── 端点 ──
+export interface LoginUser {
+  id: string
+  balance?: number
+  nickName?: string
+  email?: string
+}
+
 export const api = {
+  // ── 登录（chatpal 邮箱验证码两步，经后端代理 /bff/auth/*；chatpal 不对前端直接暴露）──
+  // 第①步：发验证码到邮箱。第②步：邮箱+验证码换 JWT，成功即写 localStorage，之后请求自动带 Bearer。
+  sendEmailCode: (email: string) =>
+    req<{ ok: boolean }>("/auth/email/send-code", { method: "POST", body: JSON.stringify({ email }) }),
+  emailLogin: async (email: string, code: string): Promise<{ user: LoginUser }> => {
+    const r = await req<{ token: string; user: LoginUser }>("/auth/email/login", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    })
+    setPlatformToken(r.token) // 原子：登录成功即存 token，调用方无需再手动 set
+    return { user: r.user }
+  },
+
   // workspace
   getWorkspace: () => req<{ workspace: ApiWorkspace | null }>("/workspace"),
   createWorkspace: (input: Record<string, unknown>) =>

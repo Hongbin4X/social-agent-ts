@@ -22,15 +22,16 @@ async function prepare(c: Context<AppEnv>, projectId?: string) {
   return { ctx, brand: toBrandContext(bp), repos } as const
 }
 
-// 落一条生成审计，返回 job id
-async function recordJob(
+// 落一条生成审计，返回 job id。
+// 导出仅为单测可达（record-job.test.ts 直接喂假 repos 校验 billingRecordId 血缘）；路由内部使用不变。
+export async function recordJob(
   repos: ReturnType<typeof getContainer>["repos"],
   ctx: GenerationContext,
   actionType: keyof typeof CREDIT_COSTS,
   input: unknown,
   result:
-    | { ok: true; data: unknown; actualCredits: number; usage?: { model?: string; requestTokens?: number; responseTokens?: number } }
-    | { ok: false; code: GenerationErrorCode; message: string },
+    | { ok: true; data: unknown; reservationId?: string; actualCredits: number; usage?: { model?: string; requestTokens?: number; responseTokens?: number } }
+    | { ok: false; code: GenerationErrorCode; message: string; reservationId?: string },
 ) {
   const base = {
     workspaceId: ctx.workspaceId,
@@ -39,6 +40,9 @@ async function recordJob(
     actionType,
     estimatedCredits: CREDIT_COSTS[actionType],
     inputJson: input,
+    // 计费血缘：把本次生成的计费流水 id（GenerationResult.reservationId = ssa_billing_usage_record.id）
+    // 回填到 job.billingRecordId。成功/失败都写——失败已退款，但仍要留「哪次生成对应哪条计费」的审计链。
+    billingRecordId: result.reservationId,
   }
   if (result.ok) {
     const { id } = await repos.generationJobs.create({

@@ -3,9 +3,11 @@
 
 import { GenerationService, createGeneratorFromEnv } from "@social/agent"
 import { type Database, type Repositories, createDb, createRepositories, newId } from "@social/db"
-import type { CreditBillingContext, CreditBillingGateway, CreditReservation, GenerationUsage } from "@social/shared"
+import type { BillingActionType, CreditBillingContext, CreditBillingGateway, CreditReservation, GenerationUsage } from "@social/shared"
 import { type MediaStorage, mediaStorageFromEnv } from "@social/storage"
 import { serverConfigFromEnv } from "./config"
+import { type BillingLedger, GlbgptCreditBilling } from "./services/glbgpt-billing"
+import { ChatpalAuthClient } from "./services/chatpal-auth"
 
 // 本地 credits 计费：把预扣/结算/退款如实记进 ssa_billing_usage_record（本地账本，真实行为，不假称对接 GLBGPT）。
 // 本地不做真实余额扣减（那是 GLBGPT 的事，联调时换成调 GLBGPT 的适配器即可，端口不变）。
@@ -37,12 +39,45 @@ class LocalCreditBilling implements CreditBillingGateway {
   }
 }
 
+// BILLING_MODE 工厂：stub→本地账本（不真扣）/ real→GlbgptCreditBilling（接 ai-api 真扣）。
+// real 模式把 repos.billingRecords 适配成适配器的窄 BillingLedger 端口（依赖倒置，见 glbgpt-billing.ts）。
+function makeCreditBilling(
+  config: ReturnType<typeof serverConfigFromEnv>,
+  repos: Repositories,
+): CreditBillingGateway {
+  if (config.billingMode !== "real") return new LocalCreditBilling(repos)
+  if (!config.jwtSecret || !config.aiApiBaseUrl) {
+    throw new Error("BILLING_MODE=real 需要配置 JWT_SECRET 与 AI_API_BASE_URL（缺一不可）")
+  }
+  const ledger: BillingLedger = {
+    async create(input) {
+      const { id } = await repos.billingRecords.create({ ...input, actionType: input.actionType as BillingActionType, status: "reserved" })
+      return { reservationId: id }
+    },
+    markSettled: (id, patch) => repos.billingRecords.update(id, { status: "settled", ...patch }),
+    markRefunded: (id) => repos.billingRecords.update(id, { status: "refunded" }),
+    async getUserId(id) {
+      return (await repos.billingRecords.getById(id))?.userId ?? null
+    },
+  }
+  return new GlbgptCreditBilling({
+    baseUrl: config.aiApiBaseUrl,
+    jwtSecret: config.jwtSecret,
+    productNo: config.billingProductNo,
+    billingModel: config.textBillingModel,
+    ledger,
+    logger: console,
+  })
+}
+
 export interface Container {
   db: Database
   repos: Repositories
   generation: GenerationService
   media: MediaStorage
   config: ReturnType<typeof serverConfigFromEnv>
+  /** 登录代理：配了 CHATPAL_BASE_URL 才有；否则 null（登录路由据此如实 501）。 */
+  chatpalAuth: ChatpalAuthClient | null
   newId: typeof newId
 }
 
@@ -54,9 +89,13 @@ export function getContainer(): Container {
   const { db } = createDb()
   const repos = createRepositories(db)
   const generator = createGeneratorFromEnv()
-  const billing = new LocalCreditBilling(repos)
+  const billing = makeCreditBilling(config, repos)
   const generation = new GenerationService({ generator, billing, logger: console })
   const media = mediaStorageFromEnv()
-  singleton = { db, repos, generation, media, config, newId }
+  // 登录代理：配了 chatpal 根地址才实例化；缺则 null（路由如实 501「未接通」，不假装）。
+  const chatpalAuth = config.chatpalBaseUrl
+    ? new ChatpalAuthClient({ baseUrl: config.chatpalBaseUrl, channel: config.platformChannel })
+    : null
+  singleton = { db, repos, generation, media, config, chatpalAuth, newId }
   return singleton
 }

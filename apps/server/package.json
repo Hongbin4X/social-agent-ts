@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.json",
     "lint": "echo \"(server) no lint yet\"",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "probe:integration": "node scripts/probe-integration.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
@@ -19,7 +20,8 @@
     "@social/publisher": "workspace:*",
     "@social/shared": "workspace:*",
     "@social/storage": "workspace:*",
-    "hono": "^4.6.14"
+    "hono": "^4.6.14",
+    "jose": "^6.2.3"
   },
   "devDependencies": {
     "@types/node": "^24",
