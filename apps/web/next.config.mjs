@@ -9,6 +9,13 @@ const APP_ENV = loadEnv()
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // ⚠️ Next 16 默认只允许 localhost 访问 dev 资源（/_next/*、HMR websocket），其它来源一律拦截。
+  // 后果极具迷惑性：页面 HTTP 200、JS chunk 也 200、控制台【无报错】，但 dev 运行时起不来 →
+  // React 不水合 → 整页【白屏】。2026-07-15 实测：同一个服务，localhost:3001 渲染出登录框，
+  // 127.0.0.1:3001 完全空白。我们是【服务器上的 dev server + nginx 反代给公网】，来源永远不是
+  // localhost，所以必须显式放行，否则用户从公网访问只能看到白屏。
+  // 只影响 dev（next dev）；生产 next build/start 无此机制。
+  allowedDevOrigins: ["127.0.0.1", "52.54.122.204", "x.broly.ai"],
   // 显式把用到的 NEXT_PUBLIC_* 注入客户端包。
   // 不靠 Next 对 process.env.NEXT_PUBLIC_* 的自动内联——那套只认它自己加载的 .env 文件，
   // 我们的值是上面 loadEnv() 塞进 process.env 的，必须经这里显式过一道才会进浏览器包。
