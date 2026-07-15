@@ -36,3 +36,16 @@ accountRoutes.patch("/:id", async (c) => {
   await repos.accounts.update(c.req.param("id"), patch)
   return c.json({ ok: true })
 })
+
+// 删除账号（彻底移除该行；不同于「断开连接」——那只清 token、行还留在列表里）。
+// ⚠️ 必须校验归属：accountId 是前端传的，不校验就等于「知道 id 就能删别人工作区的账号」。
+accountRoutes.delete("/:id", async (c) => {
+  const { workspace, repos } = await currentWorkspace(c)
+  if (!workspace) return c.json({ error: "not_found", message: "先创建工作区" }, 404)
+  const id = c.req.param("id")
+  const account = (await repos.accounts.listByWorkspace(workspace.id)).find((a) => a.id === id)
+  // 不属于当前工作区 → 一律 404（不回 403：别告诉调用方"这个 id 存在但不是你的"）。
+  if (!account) return c.json({ error: "not_found", message: "账号不存在或不属于你" }, 404)
+  await repos.accounts.remove(id)
+  return c.json({ ok: true })
+})

@@ -3,6 +3,7 @@
 import { FolderOpen, History, Sparkles, Crown } from "lucide-react"
 import { useLang } from "@/features/social/i18n"
 import { LangToggle } from "@/features/social/shell/lang-toggle"
+import { UserMenu } from "@/features/social/shell/user-menu"
 
 function TopButton({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
@@ -25,9 +26,8 @@ export function Topbar() {
         <Crown className="size-4" />
         {t("Upgrade Plan", "升级套餐")}
       </button>
-      <span className="ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background">
-        L
-      </span>
+      {/* 头像 → 点开有「退出登录」。此前这里是个纯装饰的 span，登录后完全没有出口。 */}
+      <UserMenu />
     </header>
   )
 }

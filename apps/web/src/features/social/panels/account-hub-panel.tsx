@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useSocial, platformPublishMode } from "@/features/social/store"
 import type { Account, AccountStatus, Platform } from "@social/shared"
 import { ALL_PLATFORMS } from "@social/shared"
@@ -8,7 +8,7 @@ import { Card, Field, Modal, PlatformBadge, Select, TextInput } from "@/features
 import { Button } from "@/components/ui/button"
 import { useLang } from "@/features/social/i18n"
 import { ACCOUNT_STATUS_LABELS } from "@/features/social/i18n/labels"
-import { Plug, Plus, RefreshCw, AlertTriangle, CircleCheck, Unplug } from "lucide-react"
+import { Plug, Plus, RefreshCw, AlertTriangle, CircleCheck, Trash2, Unplug } from "lucide-react"
 
 // 状态的颜色/圆点样式表。显示名不在这里取——统一走 ACCOUNT_STATUS_LABELS + te()
 // （labels.ts 是枚举显示名的唯一真源）。此处 label 仅保留作英文兜底，渲染实际用 te()。
@@ -22,7 +22,7 @@ const STATUS_COPY: Record<AccountStatus, { label: string; tone: string; dot: str
 }
 
 export function AccountHubPanel() {
-  const { accounts, connectAccount, disconnectAccount, refreshAccount, addManualAccount } = useSocial()
+  const { accounts, connectAccount, disconnectAccount, refreshAccount, deleteAccount, addManualAccount } = useSocial()
   const { t } = useLang()
   const [manualOpen, setManualOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
@@ -58,8 +58,8 @@ export function AccountHubPanel() {
 
       <div className="mt-3 rounded-md border border-border bg-[oklch(0.97_0.02_70)] px-3 py-2 text-xs text-[oklch(0.45_0.1_60)]">
         {t(
-          "Auto publishing is supported for X, Instagram, and Facebook. TikTok, YouTube, and Reddit are manual-only and appear as a manual fallback in the publish flow.",
-          "X、Instagram 和 Facebook 支持自动发布。TikTok、YouTube 和 Reddit 仅支持手动，会在发布流程中以转手动的方式出现。",
+          "Auto publishing is supported for X, Instagram, and Facebook. TikTok, YouTube, and Reddit do not support auto publishing and are skipped in the publish flow.",
+          "X、Instagram 和 Facebook 支持自动发布。TikTok、YouTube 和 Reddit 不支持自动发布，发布流程中会跳过它们。",
         )}
       </div>
 
@@ -70,6 +70,7 @@ export function AccountHubPanel() {
             account={acc}
             onConnect={() => connectAccount(acc.platform)}
             onDisconnect={() => disconnectAccount(acc.id)}
+            onDelete={() => deleteAccount(acc.id)}
             onRefresh={() => refreshAccount(acc.id)}
           />
         ))}
@@ -161,11 +162,13 @@ function AccountRow({
   onConnect,
   onDisconnect,
   onRefresh,
+  onDelete,
 }: {
   account: Account
   onConnect: () => void
   onDisconnect: () => void
   onRefresh: () => void
+  onDelete: () => void
 }) {
   const { t, te } = useLang()
   const s = STATUS_COPY[account.status]
@@ -199,25 +202,77 @@ function AccountRow({
             </Button>
           </>
         ) : account.status === "Expired" || account.status === "PermissionMissing" ? (
-          <Button size="sm" variant="outline" onClick={onConnect}>
-            <AlertTriangle className="size-3.5" />
-            {t("Reconnect", "重新连接")}
-          </Button>
+          // token 过期 / 权限缺失：重新授权可修；同时给删除（用户可能就是不想要这个账号了）。
+          <>
+            <Button size="sm" variant="outline" onClick={onConnect}>
+              <AlertTriangle className="size-3.5" />
+              {t("Reauthorize", "重新授权")}
+            </Button>
+            <DeleteButton account={account} onDelete={onDelete} />
+          </>
         ) : account.type === "manual" || account.status === "UnsupportedPublishing" ? (
-          <span className="inline-flex items-center gap-1 text-xs text-status-manual">
-            <CircleCheck className="size-3.5" />
-            {t("Export ready", "可导出")}
-          </span>
+          <>
+            <span className="inline-flex items-center gap-1 text-xs text-status-manual">
+              <CircleCheck className="size-3.5" />
+              {t("Export ready", "可导出")}
+            </span>
+            <DeleteButton account={account} onDelete={onDelete} />
+          </>
         ) : isAuto ? (
-          <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={onConnect}>
-            <Plug className="size-3.5" />
-            {t("Connect", "连接")}
-          </Button>
+          // 未连接 / 已断开：给「重新授权」+「删除」两个出口。
+          // 判据用 expiresAt/name 之外的更稳的东西不可得（Account 领域类型不含 externalAccountId），
+          // 故用文案区分：连过再断开的行 capabilities 会被 store 改写成 "Not connected"。
+          <>
+            <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={onConnect}>
+              <Plug className="size-3.5" />
+              {account.capabilities === "Not connected" ? t("Reauthorize", "重新授权") : t("Connect", "连接")}
+            </Button>
+            <DeleteButton account={account} onDelete={onDelete} />
+          </>
         ) : (
-          <span className="text-xs text-muted-foreground">{t("Manual only", "仅手动")}</span>
+          <>
+            <span className="text-xs text-muted-foreground">{t("Manual only", "仅手动")}</span>
+            <DeleteButton account={account} onDelete={onDelete} />
+          </>
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * 删除账号按钮 —— 带就地二次确认。
+ * 删除不可逆（后端是真 DELETE 行），点一下就没会误伤；但也不值得为它弹一个模态框打断流程，
+ * 故用「点一次变成『确认删除?』，再点才真删，3 秒无操作自动复原」的就地确认。
+ */
+function DeleteButton({ account, onDelete }: { account: Account; onDelete: () => void }) {
+  const { t } = useLang()
+  const [armed, setArmed] = useState(false)
+
+  useEffect(() => {
+    if (!armed) return
+    const timer = setTimeout(() => setArmed(false), 3000)
+    return () => clearTimeout(timer)
+  }, [armed])
+
+  if (!armed) {
+    return (
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-label={t(`Remove ${account.platform} account`, `删除 ${account.platform} 账号`)}
+        onClick={() => setArmed(true)}
+      >
+        <Trash2 className="size-3.5" />
+        {t("Remove", "删除")}
+      </Button>
+    )
+  }
+  return (
+    <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={onDelete}>
+      <Trash2 className="size-3.5" />
+      {t("Confirm?", "确认删除?")}
+    </Button>
   )
 }
 

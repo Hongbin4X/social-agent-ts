@@ -16,6 +16,7 @@ function cleanMsg(raw: string): string {
   return raw.replace(/^\/auth\/[^:]+:\s*/, "")
 }
 
+
 export function LoginView({ onLoggedIn }: { onLoggedIn: () => void }) {
   const { t } = useLang()
   const [step, setStep] = useState<"email" | "code">("email")

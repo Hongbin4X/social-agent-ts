@@ -54,7 +54,12 @@ export function serverConfigFromEnv(env = process.env): ServerConfig {
     // 其余规格键：nano_banana_2_{0.5k,2k,4k}（:3826-3830）。换出图模型/规格必须同步改。
     imageBillingModel: env.IMAGE_BILLING_MODEL?.trim() || "nano_banana_2_1k",
     chatpalBaseUrl: env.CHATPAL_BASE_URL?.trim() || undefined,
-    platformChannel: env.PLATFORM_CHANNEL?.trim() || "chatpal",
+    // ⚠️ glbgpt，不是 chatpal（2026-07-15 实机纠正）：channel 指【产品】不是服务名。
+    // 平台按 (email + channel) 区分用户（UserAPI 注释原文「区分不同channel用户」），
+    // 且 loginOrSignupByEmailChannel 找不到就【新建】—— channel 填错不会报错，
+    // 而是悄悄给用户开一个空账号（余额 0），比报错更难查。
+    // 实证：测试环境 2000163/2000208/1999999/15 四个账号的 channel 全是 glbgpt。
+    platformChannel: env.PLATFORM_CHANNEL?.trim() || "glbgpt",
   }
 }
 

@@ -6,6 +6,7 @@ import { LanguageProvider } from "@/features/social/i18n"
 import { Sidebar } from "@/features/social/shell/sidebar"
 import { Topbar } from "@/features/social/shell/topbar"
 import { Toaster } from "@/features/social/shell/toaster"
+import { PublishResultModal } from "@/features/social/components/publish-result-modal"
 import { HomeView } from "@/features/social/shell/home-view"
 import { Workbench } from "@/features/social/shell/workbench"
 import { LoginView } from "@/features/social/shell/login-view"
@@ -16,7 +17,7 @@ import { getPlatformToken } from "@/features/social/data/api"
 const REQUIRE_LOGIN = process.env.NEXT_PUBLIC_REQUIRE_LOGIN === "true"
 
 function Shell() {
-  const { view } = useSocial()
+  const { view, publishResult, dismissPublishResult } = useSocial()
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />
@@ -27,6 +28,8 @@ function Shell() {
         </main>
       </div>
       <Toaster />
+      {/* 发布成功弹窗：全局挂一份——内容库/日历/wizard 任何入口发布都能弹出链接。 */}
+      <PublishResultModal result={publishResult} onClose={dismissPublishResult} />
     </div>
   )
 }

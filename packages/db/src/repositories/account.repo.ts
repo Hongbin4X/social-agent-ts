@@ -1,6 +1,6 @@
 // 社媒账号仓储：工作区级（跨品牌共享），按 workspaceId 隔离。
 
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, isNull } from "drizzle-orm"
 import type { Account, AccountStatus, AccountType, Platform } from "@social/shared"
 import type { Database } from "../client"
 import { newId } from "../id"
@@ -67,8 +67,13 @@ export interface AccountRepo {
   updateTokens(accountId: string, input: UpdateTokensInput): Promise<void>
   /** 只改连接状态（如 refresh 失败标 PermissionMissing / Expired）。 */
   setStatus(accountId: string, status: AccountStatus): Promise<void>
-  /** 断开连接：清空所有 token 列，status=NotConnected。 */
+  /** 断开连接：清空所有 token 列，status=NotConnected。注意保留 external_account_id（重新授权时按它认回同一账号）。 */
   clearTokens(accountId: string): Promise<void>
+  /**
+   * 彻底删除账号行（不同于 clearTokens 的"断开"——那只是清 token、行还在列表里显示）。
+   * 用于用户在账号页主动移除不想要的账号。删前请确认归属（见 routes/accounts.ts 的隔离校验）。
+   */
+  remove(accountId: string): Promise<void>
 }
 
 type AccountRow = typeof ssaSocialAccount.$inferSelect
@@ -152,8 +157,38 @@ export class DrizzleAccountRepo implements AccountRepo {
     return rows[0] ? rowToAccount(rows[0]) : null
   }
 
+  /**
+   * 找该工作区里【尚未连接过】的同平台占位行（external_account_id 为空）。
+   *
+   * 为什么需要：工作区初始化会为每个平台种一条展示用占位行（X/NotConnected、Instagram/Expired…），
+   * 它们没有 external_account_id。授权成功时若只按 external 判重，就找不到它 → 另插一行 →
+   * 同一平台出现【两张卡片】：一张新的 Connected、一张旧的 NotConnected。
+   * 前端如实把两条都画出来，用户看到那张 NotConnected 就以为"授权失败了"
+   *（2026-07-15 真实发生：库里明明是 Connected，用户看到的却是 not connected）。
+   */
+  private async findUnlinkedPlaceholder(workspaceId: string, platform: Platform): Promise<Account | null> {
+    const rows = await this.db
+      .select()
+      .from(ssaSocialAccount)
+      .where(
+        and(
+          eq(ssaSocialAccount.workspaceId, workspaceId),
+          eq(ssaSocialAccount.platform, platform),
+          isNull(ssaSocialAccount.externalAccountId),
+        ),
+      )
+      .limit(1)
+    return rows[0] ? rowToAccount(rows[0]) : null
+  }
+
   async upsertConnectedAccount(workspaceId: string, input: UpsertConnectedInput): Promise<Account> {
-    const existing = await this.findByExternal(workspaceId, input.platform, input.externalAccountId)
+    // 判重顺序（不能只靠第 1 条）：
+    //  1. 同一个 X 账号重新授权 → 按 external 命中，更新 token。
+    //  2. 首次授权 → external 找不到，但工作区里有该平台的【占位行】→ 就地升级它，别另起一行。
+    //  3. 都没有 → 才插新行（如同一工作区连接第二个不同的 X 账号）。
+    const existing =
+      (await this.findByExternal(workspaceId, input.platform, input.externalAccountId)) ??
+      (await this.findUnlinkedPlaceholder(workspaceId, input.platform))
     // 展示用过期时刻（ISO）—— 与 token_expires_at(epoch) 同源，仅给前端看，续期逻辑只认 epoch。
     const expiresAtIso = new Date(input.tokenExpiresAt * 1000).toISOString()
     const tokenCols = {
@@ -169,8 +204,13 @@ export class DrizzleAccountRepo implements AccountRepo {
       expiresAt: expiresAtIso,
     }
     if (existing) {
-      await this.db.update(ssaSocialAccount).set(tokenCols).where(eq(ssaSocialAccount.id, existing.id))
-      return { ...existing, ...rowSubset(tokenCols) }
+      // 占位行原本 type=manual/capabilities 是展示文案，升级为真实连接账号时一并纠正，
+      // 否则会留下「已连接但 type 还是 manual」的四不像行，发布链路按 type 判能力会出错。
+      await this.db
+        .update(ssaSocialAccount)
+        .set({ ...tokenCols, type: "connected" as AccountType, capabilities: "Auto publish (X API v2)" })
+        .where(eq(ssaSocialAccount.id, existing.id))
+      return { ...existing, ...rowSubset(tokenCols), type: "connected", capabilities: "Auto publish (X API v2)" }
     }
     const id = newId("acc")
     await this.db.insert(ssaSocialAccount).values({
@@ -221,6 +261,10 @@ export class DrizzleAccountRepo implements AccountRepo {
         status: "NotConnected" as AccountStatus,
       })
       .where(eq(ssaSocialAccount.id, accountId))
+  }
+
+  async remove(accountId: string): Promise<void> {
+    await this.db.delete(ssaSocialAccount).where(eq(ssaSocialAccount.id, accountId))
   }
 }
 

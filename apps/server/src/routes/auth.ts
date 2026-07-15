@@ -46,8 +46,14 @@ authRoutes.post("/email/login", async (c) => {
   }
   try {
     const result = await r.client.emailLogin(body.email.trim(), body.code.trim())
-    // 只回前端需要的字段：token 存本地当 Bearer；user 摘要供欢迎语/余额显示。不回传 chatpal 原始大对象。
-    return c.json({ token: result.token, user: { id: result.userId, balance: result.balance, nickName: result.nickName, email: result.email } })
+    // 只回 token（前端存本地当 Bearer）。不回传平台原始大对象。
+    // 用户身份一律由后端从 Bearer 验签取（auth.ts），不信前端传来的 id——回传 user 摘要没必要也不安全。
+    if (result.isNewUser) {
+      // 复用 GLB 既有账号时不该新建。出现这条 = channel 很可能配错了（平台按 (email+channel) 找用户，
+      // 找不到就静默新建一个余额 0 的空账号，用户会"登录成功但什么都没有"）。喊出来，别让它悄悄过去。
+      console.warn(`[auth] ⚠️ 平台新建了账号(is_new_user=1) email=${body.email.trim()} channel 是否正确？应为 glbgpt`)
+    }
+    return c.json({ token: result.token })
   } catch (e) {
     if (e instanceof ChatpalAuthError) {
       // 验证码错/过期时 chatpal 返 HTTP200+code=0（status=200 非错误码），登录失败统一按 401 让前端提示重输。
