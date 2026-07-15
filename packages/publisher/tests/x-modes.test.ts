@@ -10,6 +10,7 @@ import {
   splitIntoThreadSegments,
   xWeightedLength,
   planXTweets,
+  composeCtaLine,
 } from "../src"
 import type { PublishItem, PublishRequest } from "@social/shared"
 
@@ -341,5 +342,25 @@ describe("X 图片张数硬上限（实测得出）", () => {
     const imgs = Array.from({ length: 13 }, (_, i) => `i${i}.jpg`)
     const planned = planXTweets("正文内容。", imgs, "tweet")
     expect(planned.flatMap((t) => t.imageUrls)).toHaveLength(13)
+  })
+})
+
+// composeCtaLine —— 「CTA文案: 链接」（用户 2026-07-15 指定的形式）。
+// 此前 CTA 文案【完全没有通道能发到平台】（契约里根本没这个字段），推文末尾只剩光秃秃一个 URL；
+// 而预览把它画成品牌色按钮——X 的自然推文没有 CTA 按钮（那是广告功能），纯属虚构。
+describe("composeCtaLine（CTA 的真实形态）", () => {
+  it("文案 + 链接 → 「文案: 链接」", () => {
+    expect(composeCtaLine("立即免费试用", "https://a.co")).toBe("立即免费试用: https://a.co")
+  })
+  it("只有链接 → 光秃秃的链接（与从前行为一致，不回归）", () => {
+    expect(composeCtaLine(undefined, "https://a.co")).toBe("https://a.co")
+    expect(composeCtaLine("  ", "https://a.co")).toBe("https://a.co")
+  })
+  it("只有文案 → 就发文案（没链接也是个有效的行动号召）", () => {
+    expect(composeCtaLine("欢迎私信", undefined)).toBe("欢迎私信")
+  })
+  it("都没有 → 空串（调用方据此跳过，不拼出个孤零零的冒号）", () => {
+    expect(composeCtaLine(undefined, undefined)).toBe("")
+    expect(composeCtaLine("", "  ")).toBe("")
   })
 })

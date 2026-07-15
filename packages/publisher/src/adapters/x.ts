@@ -15,6 +15,7 @@ import { PublisherError, PublisherNotConfiguredError } from "../errors"
 import type { AdapterDeps, PublishContext, SocialPublisher } from "../ports"
 import { composeText } from "../content"
 import { postArticle, postThread, postTweet, splitIntoThreadSegments, uploadMedia, X_TWEET_MAX } from "../x/client"
+import { composeCtaLine } from "@social/shared"
 
 export interface XConfig {
   /** X API 基址，默认 https://api.twitter.com。 */
@@ -124,6 +125,9 @@ function fullText(content: PublishContext["content"]): string {
   const parts: string[] = []
   if (content.text?.trim()) parts.push(content.text.trim())
   if (content.hashtags?.trim()) parts.push(content.hashtags.trim())
-  if (content.linkUrl?.trim()) parts.push(content.linkUrl.trim())
+  // CTA 拼成「文案: 链接」一行（composeCtaLine 是前后端共用的唯一真源——
+  // 预览按它算长度/分段，这里按它拼实际发出去的文本，两边不会漂移）。
+  const cta = composeCtaLine(content.ctaText, content.linkUrl)
+  if (cta) parts.push(cta)
   return parts.join("\n\n")
 }

@@ -97,6 +97,12 @@ export interface PublishContent {
   hashtags?: string
   /** CTA 链接。注意：带链接会显著影响 X 的 provider cost（$0.20 vs $0.015/条）。 */
   linkUrl?: string
+  /**
+   * CTA 文案（如"立即免费试用"）。与 linkUrl 一起拼成末尾一行「CTA文案: 链接」。
+   * 2026-07-15 补：此前契约里【没有这个字段】，AI 写的 CTA 文案从前端到发布层无路可走、
+   * 被整个丢弃，推文末尾只剩一个光秃秃的 URL。拼法见 shared 的 composeCtaLine（前后端共用）。
+   */
+  ctaText?: string
   media?: MediaRef[]
   /** 定时发布时间（ISO）。缺省=立即发布。 */
   scheduledAt?: string

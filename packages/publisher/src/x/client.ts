@@ -12,9 +12,9 @@
 import { PublisherError } from "../errors"
 // 加权长度/串推分段是【前后端共用】的纯函数，真源在 @social/shared：
 // 前端预览必须用同一套逻辑，否则会出现"预览 3 条、实际发 5 条"的偏差。
-import { planXTweets, splitIntoThreadSegments, X_TWEET_MAX, xWeightedLength } from "@social/shared"
+import { composeCtaLine, planXTweets, splitIntoThreadSegments, X_TWEET_MAX, xWeightedLength } from "@social/shared"
 // 原地转出：这些历史上就从 x/client 导出，调用方（adapters/x.ts、index.ts、测试）沿用旧路径不改。
-export { planXTweets, splitIntoThreadSegments, X_TWEET_MAX, xWeightedLength }
+export { composeCtaLine, planXTweets, splitIntoThreadSegments, X_TWEET_MAX, xWeightedLength }
 
 // tweet 端点 api.twitter.com 已实测可用（master 真发过 tweet）；articles/media 端点在 api.x.com。
 const TWEET_BASE = "https://api.twitter.com"

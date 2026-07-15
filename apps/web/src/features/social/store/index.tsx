@@ -41,7 +41,7 @@ import type {
 } from "@social/shared"
 // 平台自动发布能力的唯一真源在 @social/shared（后端也复用同一份）。这里 import 后再 re-export，
 // 让原型里所有「从 store 引 AUTO_PLATFORMS / platformPublishMode」的调用方零改动。
-import { AUTO_PLATFORMS, platformPublishMode, splitBodyByImageTokens, stripImageTokens } from "@social/shared"
+import { AUTO_PLATFORMS, composeCtaLine, platformPublishMode, splitBodyByImageTokens, stripImageTokens } from "@social/shared"
 export { AUTO_PLATFORMS, platformPublishMode }
 
 /** 一次发布的结果摘要：给「发布成功」弹窗用，带平台侧真实链接。 */
@@ -233,7 +233,14 @@ function resolveVariantAccount(
  * ⚠️ 改任何一边都要同步改另一边，否则预览的字数/分段会和真实发出去的不一致。
  */
 export function variantFullText(v: PostVariant): string {
-  return [v.hook, stripImageTokens(v.body ?? ""), v.hashtags, v.ctaUrl]
+  return [
+    v.hook,
+    stripImageTokens(v.body ?? ""),
+    v.hashtags,
+    // CTA 用与发布层【同一个】 composeCtaLine 拼成「文案: 链接」——
+    // 预览的字数/分段必须与真实发出去的一致，各拼各的必然漂移。
+    composeCtaLine(v.cta, v.ctaUrl),
+  ]
     .map((x) => x?.trim())
     .filter(Boolean)
     .join("\n\n")
@@ -1117,6 +1124,10 @@ export function SocialProvider({ children }: { children: ReactNode }) {
             text: [v.hook, stripImageTokens(v.body)].map((x) => x?.trim()).filter(Boolean).join("\n\n"),
             hashtags: v.hashtags?.trim() || undefined,
             linkUrl: v.ctaUrl?.trim() || undefined,
+            // CTA 文案（如"立即免费试用"）——发布层会拼成末尾一行「CTA文案: 链接」。
+            // 2026-07-15 补：此前它【完全没有通道能到平台】，AI 写的 CTA 被整个丢弃，
+            // 推文末尾只剩一个光秃秃的 URL。
+            ctaText: v.cta?.trim() || undefined,
             // ⚠️ 配图必须送（2026-07-15 补）：此前【压根不送 media】，于是预览里画着图、
             // 真实发出去的是纯文字推——预览在骗人。发布层 uploadImages 会按 url 取字节再传 X。
             // 顺序 = 正文里 [[img:N]] 的出现顺序（与预览的 readyImageUrls 同一口径）。

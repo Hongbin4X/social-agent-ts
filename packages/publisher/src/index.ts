@@ -66,6 +66,8 @@ export {
   splitIntoThreadSegments,
   // X 的加权长度（CJK 每字算 2）——判断是否超单条上限必须用它，不能用 .length。
   xWeightedLength,
+  // CTA 行拼装（「文案: 链接」）——前后端共用，预览与实际发出去的必须一致。
+  composeCtaLine,
   X_TWEET_MAX,
   type PostedTweet,
   type PostedThread,

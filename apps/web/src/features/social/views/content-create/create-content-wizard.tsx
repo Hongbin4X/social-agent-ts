@@ -86,7 +86,6 @@ export function CreatePostWizard({
   const [showVariantsConfirm, setShowVariantsConfirm] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [showBatch, setShowBatch] = useState(false)
-  const [ctaPreview, setCtaPreview] = useState<string | null>(null)
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now")
   // 排期表单默认值 = 【当前时间 + 10 分钟】（用户 2026-07-15 需求）。
   // 曾经写死 DAYS[2]（本周三）+ "09:00"，用户不改就永远排到那个时刻。
@@ -121,11 +120,6 @@ export function CreatePostWizard({
 
   const togglePlatform = (p: Platform) =>
     setStudioPlatforms(studio.platforms.includes(p) ? studio.platforms.filter((x) => x !== p) : [...studio.platforms, p])
-
-  const handleCtaPreview = (url?: string) => {
-    if (url && url.trim()) setCtaPreview(url.trim())
-    else pushToast(t("This is a mock CTA preview. Add a destination URL in Brand Profile to make it actionable.", "这是模拟的 CTA 预览。在品牌档案里填写目标链接即可让它真正可点。"), "warn")
-  }
 
   /**
    * 可选账号 —— 只列【真实已授权】的账号（status==="Connected"）。
@@ -493,7 +487,6 @@ export function CreatePostWizard({
                     <PreviewCard
                       variant={current}
                       hasImage={studio.imageGenerated}
-                      onCtaPreview={handleCtaPreview}
                       onRegenerateImage={() =>
                         setPaid({
                           label: t("Regenerate image", "重新生成图片"),
@@ -746,23 +739,6 @@ export function CreatePostWizard({
               </span>
             ))}
           </div>
-        </div>
-      </Modal>
-
-      <Modal
-        open={ctaPreview !== null}
-        onClose={() => setCtaPreview(null)}
-        title={t("CTA destination", "CTA 目标")}
-        description={t("This is only a preview of where the post's call-to-action would send people. No navigation happens in this demo.", "这只是预览帖子的行动号召会把用户引导到哪里。演示中不会真正跳转。")}
-        footer={
-          <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={() => setCtaPreview(null)}>
-            {t("Close preview", "关闭预览")}
-          </Button>
-        }
-      >
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">{t("Destination URL", "目标链接")}</p>
-          <p className="break-all rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">{ctaPreview}</p>
         </div>
       </Modal>
 

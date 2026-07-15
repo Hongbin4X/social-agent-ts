@@ -14,14 +14,12 @@ import { PlatformFrame } from "./platform-frames"
 export function PreviewCard({
   variant,
   hasImage,
-  onCtaPreview,
   onRegenerateImage,
   onEditImage,
   onGenerateSlot,
 }: {
   variant: PostVariant
   hasImage: boolean
-  onCtaPreview: (url?: string) => void
   onRegenerateImage?: () => void
   onEditImage?: () => void
   /** 按槽出图（正文内联配图占位卡的 Generate 按钮）；不传则占位卡不显示按钮。 */
@@ -148,18 +146,6 @@ export function PreviewCard({
         ) : null}
 
         {variant.hashtags ? <p className="mt-2 text-xs text-status-scheduled">{variant.hashtags}</p> : null}
-        {variant.cta ? (
-          <div className="mt-3 space-y-1">
-            <Button type="button" size="xs" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={() => onCtaPreview(variant.ctaUrl)}>
-              {variant.cta}
-            </Button>
-            <p className="text-[11px] text-muted-foreground">
-              {variant.ctaUrl?.trim()
-                ? t("CTA preview — links to the post destination, not an internal page.", "CTA 预览 — 跳转至帖子的目标链接，而非站内页面。")
-                : t("CTA preview — add a destination URL to make it actionable.", "CTA 预览 — 添加目标链接后即可点击跳转。")}
-            </p>
-          </div>
-        ) : null}
       </div>
       )}
 

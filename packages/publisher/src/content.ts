@@ -1,6 +1,7 @@
 // 文案拼装 / 长度校验小工具，各 adapter 共用，避免每个平台各写一份。
 
 import type { PublishContent } from "@social/shared"
+import { composeCtaLine } from "@social/shared"
 import { PublisherError } from "./errors"
 
 /**
@@ -17,7 +18,11 @@ export function composeText(
   const parts: string[] = []
   if (content.text?.trim()) parts.push(content.text.trim())
   if (content.hashtags?.trim()) parts.push(content.hashtags.trim())
-  if (opts.inlineLink && content.linkUrl?.trim()) parts.push(content.linkUrl.trim())
+  // CTA 拼成「文案: 链接」一行；与 X 的 fullText 同一个 composeCtaLine，各平台口径一致。
+  if (opts.inlineLink) {
+    const cta = composeCtaLine(content.ctaText, content.linkUrl)
+    if (cta) parts.push(cta)
+  }
 
   const text = parts.join("\n\n")
   if (text.length === 0) throw new PublisherError("content_invalid", "发布内容为空")
