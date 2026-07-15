@@ -35,15 +35,20 @@ export function PreviewCard({
   // 有 imageSlots 时走「正文按 token 内联渲染」新路径；无 slots 时维持旧的单媒体块（向后兼容旧数据/非 image 帖子）。
   const slots = variant.imageSlots ?? []
 
+  // X 走【真实发布效果】单一预览：不再叠一个编辑态卡片（那会把同一素材画两遍，用户 2026-07-15 反馈
+  // "会把素材显示两遍，我只需要预览真实发表时候的效果"）。配图的生成/重出控件挪到下方独立的「素材」区——
+  // 它是【操作区】不是第二个预览，不会造成"两个版本"的困惑。
+  const isX = variant.platform === "X"
+  // 只有"还需要动手"的槽才需要操作入口：已 ready 的图上方真实预览已经画了。
+  const pendingSlots = slots.filter((sl) => sl.status !== "ready" || !sl.url)
+
   return (
     <div className="mt-3 space-y-3">
-      {/* X 专属：【真实发布效果】——跟随「普通推 / 串推 / Article」实时变化。
-          2026-07-15 用户反馈"预览没随形态切换而改变"：此前右侧只有下面那个编辑态卡片，
-          它按 imageSlots 渲染编辑视图，完全不看 xPostType，所以切形态毫无反应。
-          （我第一次修错了对象——改的是内容库弹窗用的 PlatformFrame，不是这里。）
-          这个区块用与发布层同源的 planXTweets 渲染，所见即所发。 */}
-      {variant.platform === "X" ? <XLivePreview variant={variant} /> : null}
-      <div className="rounded-lg border border-border bg-background p-3">
+      {isX ? (
+        <XLivePreview variant={variant} />
+      ) : (
+        <div className="rounded-lg border border-border bg-background p-3">
+
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <PlatformBadge platform={variant.platform} size="md" />
@@ -156,6 +161,28 @@ export function PreviewCard({
           </div>
         ) : null}
       </div>
+      )}
+
+      {/* 待生成的配图（仅 X）—— 这是【操作区】，不是第二个预览。
+          只列【还需要动手的槽】（未生成 / 失败 / 生成中）：
+          已 ready 的图在上方真实预览里已经画出来了，这里再画一遍就是"素材显示两遍"
+          （用户 2026-07-15 连着指出两次的同一个毛病：我只是把重复挪了个位置）。
+          全部出完图后本区自动消失——没有待办就不该占地方。 */}
+      {isX && pendingSlots.length > 0 ? (
+        <div className="rounded-lg border border-border bg-card p-3">
+          <p className="text-xs font-semibold text-foreground">
+            {t(`Images to generate (${pendingSlots.length})`, `待生成配图（${pendingSlots.length} 张）`)}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {t("Generated images are attached below the text — X has no inline images.", "生成后统一附在正文下方 —— X 不支持内联图。")}
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {pendingSlots.map((sl) => (
+              <SlotPreview key={sl.ref} slot={sl} ratio={ratio} onGenerate={onGenerateSlot} />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-lg border border-border bg-card p-3">
         <p className="text-xs font-semibold text-foreground">{t("Pre-publish checks", "发布前检查")}</p>

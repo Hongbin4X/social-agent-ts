@@ -10,7 +10,7 @@ import { PlatformPreviewModal } from "./platform-preview-modal"
 import { useLang } from "@/features/social/i18n"
 import { STATUS_LABELS } from "@/features/social/i18n/labels"
 import { cn } from "@/lib/utils"
-import { CheckSquare, ListFilter, PencilLine, RefreshCw, Send, Square, Trash2 } from "lucide-react"
+import { CheckSquare, Copy, ListFilter, PencilLine, RefreshCw, Send, Square, Trash2 } from "lucide-react"
 
 /* ---------- content library ---------- */
 // 可二次修改 / 可删除的作用面：未发表草稿(Draft/Ready) + 已排期(Scheduled)。
@@ -28,7 +28,7 @@ const FILTERS: { label: string; value: PostStatus | "All" }[] = [
 ]
 
 export function ContentLibrary({ onEditPost }: { onEditPost: (post: SocialPost) => void }) {
-  const { posts, retryFailed, deletePost, schedulePost, publishPostNow } = useSocial()
+  const { posts, retryFailed, deletePost, schedulePost, publishPostNow, duplicatePost } = useSocial()
   const { t, te } = useLang()
   const [filter, setFilter] = useState<PostStatus | "All">("All")
   const [selected, setSelected] = useState<string[]>([])
@@ -85,7 +85,7 @@ export function ContentLibrary({ onEditPost }: { onEditPost: (post: SocialPost) 
               checked={selected.includes(post.id)}
               onToggle={() => toggle(post.id)}
               onRetry={() => retryFailed(post.id)}
-              onPublish={() => publishPostNow(post)}
+              onDuplicate={() => duplicatePost(post)}
               onSchedule={() => schedulePost(post)}
               onEdit={() => onEditPost(post)}
               onDelete={() => setConfirmDelete(post)}
@@ -156,27 +156,22 @@ export function ContentLibrary({ onEditPost }: { onEditPost: (post: SocialPost) 
   )
 }
 
-/** 「再次发布」按钮：就地二次确认（重发对外不可逆，但不值得为它弹模态框打断流程）。 */
-function RepublishButton({ onPublish }: { onPublish: () => void }) {
+/**
+ * 「再次编辑」—— 复制成【就绪】副本再改，不是就地改原帖、更不是直接重发。
+ *
+ * 用户 2026-07-15 的两次纠正塑造了这个设计：
+ *  1. 「再次发布不是同一套配置直接发布，而是可以二次编辑」——直接重发同一套配置恰恰最没意义
+ *     （同号同文 X 自己就按重复内容拒掉）；价值全在"能改"：换账号、改文案、换形态。
+ *  2. 「创建一个副本（多媒体文件可以还是引用原来的），然后加到就绪那一栏」——比就地编辑干净：
+ *     原帖保持 Published（对应 X 上那条真推，忠实记录），副本独立演进，不会出现
+ *     "库里说未发布、X 上却挂着一条"的谎话。
+ */
+function RepublishButton({ onDuplicate }: { onDuplicate: () => void }) {
   const { t } = useLang()
-  const [armed, setArmed] = useState(false)
-  useEffect(() => {
-    if (!armed) return
-    const timer = setTimeout(() => setArmed(false), 3000)
-    return () => clearTimeout(timer)
-  }, [armed])
-  if (!armed) {
-    return (
-      <Button size="sm" variant="outline" onClick={() => setArmed(true)}>
-        <Send className="size-3.5" />
-        {t("Publish again", "再次发布")}
-      </Button>
-    )
-  }
   return (
-    <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={onPublish}>
-      <Send className="size-3.5" />
-      {t("Confirm?", "确认再发?")}
+    <Button size="sm" variant="outline" onClick={onDuplicate}>
+      <Copy className="size-3.5" />
+      {t("Edit a copy", "再次编辑")}
     </Button>
   )
 }
@@ -186,7 +181,7 @@ function LibraryRow({
   checked,
   onToggle,
   onRetry,
-  onPublish,
+  onDuplicate,
   onSchedule,
   onEdit,
   onDelete,
@@ -196,7 +191,7 @@ function LibraryRow({
   checked: boolean
   onToggle: () => void
   onRetry: () => void
-  onPublish: () => void
+  onDuplicate: () => void
   onSchedule: () => void
   onEdit: () => void
   onDelete: () => void
@@ -256,7 +251,7 @@ function LibraryRow({
           {/* 已发布 → 仍可【再次发布】（换个账号发 / 改完再发）。
               曾经这条路被 store 一刀切封死（"已发布过就不给发"），误伤了这两个合法场景。
               重发是对外不可逆的动作，故点一次变确认、再点才真发（同账号同文案 X 会自己拒重复）。 */}
-          {post.status === "Published" ? <RepublishButton onPublish={onPublish} /> : null}
+          {post.status === "Published" ? <RepublishButton onDuplicate={onDuplicate} /> : null}
           {/* 未发表草稿(Draft/Ready)：可二次修改(回到 Step 2 编辑窗口) / 硬删除。其它状态不显示。 */}
           {editable ? (
             <Button size="sm" variant="outline" onClick={onEdit}>

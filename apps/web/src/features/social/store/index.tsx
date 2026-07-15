@@ -140,6 +140,11 @@ interface Store {
 
   posts: SocialPost[]
   saveStudioToLibrary: () => Promise<SocialPost | null>
+  /**
+   * 复制成【就绪】副本并进编辑器 —— 已发布帖子的「再次编辑」入口。
+   * 原帖保持 Published 不动（它对应 X 上那条真推，是忠实记录）；副本可自由改文案/换账号/换形态后独立发布。
+   */
+  duplicatePost: (post: SocialPost) => Promise<void>
   retryFailed: (postId: string) => void
   // 硬删除草稿（不可恢复；UI 侧已限定作用面并二次确认）。
   deletePost: (postId: string) => void
@@ -919,6 +924,47 @@ export function SocialProvider({ children }: { children: ReactNode }) {
    *  3. 默认日期写死 "Wed Jul 8"、时间 "09:00" → 所有排期都落到 7 月 8 号。
    * 现在：先存库拿到 post → 用 post.id 建日历项 → 帖子标 Scheduled。三者原子对齐。
    */
+  /**
+   * 复制帖子为【就绪】副本，并把副本灌进编辑器。
+   *
+   * 用户 2026-07-15：「给一个再次编辑的按钮，然后创建一个副本（多媒体文件可以还是引用原来的），
+   * 然后加到就绪那一栏」。这个设计比"就地编辑已发布的帖子"干净得多：
+   *   · 原帖保持 Published + 其发布记录/链接 → X 上那条真推有忠实的对应物，不被改写；
+   *   · 副本是全新草稿，改它发它都不影响原帖，也不会出现"库里说未发布、X 上却挂着一条"的谎话。
+   *
+   * 媒体【引用原文件】：imageSlots 原样带过来（含已 ready 的 url），不重新出图——
+   * 出图要花钱花时间，而副本多半只是换个账号或改几句文案。
+   */
+  const duplicatePost = useCallback(
+    async (post: SocialPost) => {
+      if (!activeProjectId) {
+        pushToast(translate("Select a project first", "请先选择项目"), "warn")
+        return
+      }
+      try {
+        const { post: copy } = await api.savePost({
+          projectId: activeProjectId,
+          title: post.title,
+          platforms: post.platforms,
+          assetType: post.assetType,
+          status: "Ready", // 副本进「就绪」那一栏
+          hasImage: post.hasImage,
+          // 深拷贝变体：imageSlots 的 url 指向同一批媒体文件（引用，不复制文件本身）。
+          variants: post.variants.map((v) => ({
+            ...v,
+            imageSlots: v.imageSlots ? v.imageSlots.map((sl) => ({ ...sl })) : v.imageSlots,
+          })),
+        })
+        setPosts((prev) => [copy, ...prev])
+        startStudioFromPost(copy) // 直接进编辑器：用户点「再次编辑」就是想改
+        pushToast(translate("Copy created — edit and publish", "已创建副本，可修改后再发布"), "success")
+      } catch (e) {
+        pushToast(translate(`Copy failed: ${(e as Error).message}`, `创建副本失败：${(e as Error).message}`), "warn")
+      }
+    },
+    [activeProjectId, startStudioFromPost, pushToast],
+  )
+
   const addStudioToCalendar = useCallback(
     async (date?: string, time?: string) => {
       if (studio.variants.length === 0 && !studio.topic) return
@@ -1470,6 +1516,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       setStudioTopic,
       posts,
       saveStudioToLibrary,
+      duplicatePost,
       retryFailed,
       deletePost,
       publishPostNow,
@@ -1528,6 +1575,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       setStudioTopic,
       posts,
       saveStudioToLibrary,
+      duplicatePost,
       retryFailed,
       deletePost,
       publishPostNow,
