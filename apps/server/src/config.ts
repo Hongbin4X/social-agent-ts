@@ -1,15 +1,11 @@
-// 后端应用级配置：只从 env 读。加载仓库根 .env（Node 22 process.loadEnvFile）。
+// 后端应用级配置：只从 env 读。
 // 各子系统（DB / 生成 / 存储 / 发布）各自有 xxxFromEnv，这里只放 server 自身的。
 
-import path from "node:path"
+// env 加载统一走 scripts/load-env.mjs（多环境 profile：APP_ENV=local|test|prod，见该文件注释）。
+// 别在这里再自己 loadEnvFile —— 那样 .env.<profile> 覆盖会失效。
+import { loadEnv } from "../../../scripts/load-env.mjs"
 
-// 稳定加载仓库根 .env（相对本文件定位，不受启动 cwd 影响）：apps/server/src → 上溯 3 级到根。
-try {
-  const rootEnv = path.resolve(import.meta.dirname, "../../../.env")
-  ;(process as unknown as { loadEnvFile: (p?: string) => void }).loadEnvFile(rootEnv)
-} catch {
-  /* 无 .env 时用进程已有环境变量 */
-}
+loadEnv()
 
 export interface ServerConfig {
   port: number

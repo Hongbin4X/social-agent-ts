@@ -1,6 +1,13 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
+  // turbo 2.x 默认 strict 环境模式：【只有】这里声明过的变量才会透传给子任务进程。
+  // APP_ENV 不声明 = `APP_ENV=test pnpm dev` 静默失效、全部按 local 跑（旁路没关、门禁没开，
+  // 2026-07-15 实测踩到：以为切了测试环境，其实没切）。它同时该参与哈希——prod 构建 ≠ test 构建。
+  "globalEnv": ["APP_ENV"],
+  // env 文件参与哈希：NEXT_PUBLIC_* 是【构建期内联】进浏览器包的，改了 env 必须让 build 缓存失效，
+  // 否则会拿着测试配置的旧产物去上生产。
+  "globalDependencies": [".env", ".env.*"],
   "tasks": {
     "dev": {
       "cache": false,

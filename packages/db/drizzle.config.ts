@@ -1,14 +1,12 @@
-// drizzle-kit 配置：从 schema.ts 生成/推送迁移到 dev MySQL。
-// 连接参数从仓库根 .env 读取（Node 22 的 process.loadEnvFile）。
+// drizzle-kit 配置：从 schema.ts 生成/推送迁移到目标库。
+// 连接参数从 env 读，加载走全仓统一的 scripts/load-env.mjs。
+// ⚠️ 迁移的目标库随 APP_ENV 走：`APP_ENV=test pnpm db:migrate` 会迁到 .env.test 指定的库。
+//    执行前务必确认 DB_HOST/DB_NAME 是你以为的那个（别把测试迁移打到生产库上）。
 import { defineConfig } from "drizzle-kit"
+import { loadEnv } from "../../scripts/load-env.mjs"
 import { dbConfigFromEnv } from "./src/config"
 
-// 加载根 .env（drizzle-kit 不会自动加载）。缺文件时忽略，回退到 dbConfigFromEnv 的默认值。
-try {
-  ;(process as unknown as { loadEnvFile: (p?: string) => void }).loadEnvFile("../../.env")
-} catch {
-  /* .env 不存在则用默认（本地 dev MySQL） */
-}
+loadEnv()
 
 const c = dbConfigFromEnv()
 

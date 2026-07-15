@@ -30,8 +30,12 @@ out/
 /*.webp
 
 # 环境变量（第三方 key 明文写在各包内的 application 配置里，不在此忽略）
+# 多环境 profile：.env（共享默认）+ .env.<APP_ENV>（local/test/prod 覆盖），加载见 scripts/load-env.mjs。
+# 真值文件一律不进 git（含测试服/生产凭证）；只有 *.example 模板进 git。
 .env
-.env*.local
+.env.*
+!.env.example
+!.env.*.example
 
 # 编辑器 / 系统
 .DS_Store

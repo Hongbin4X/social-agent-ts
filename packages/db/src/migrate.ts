@@ -4,14 +4,11 @@
 // 注意：迁移文件由 `pnpm db:generate` 从 schema.ts 生成到 ./drizzle。首次跑前先 generate。
 
 import { migrate } from "drizzle-orm/mysql2/migrator"
+import { loadEnv } from "../../../scripts/load-env.mjs"
 import { createDb } from "./client"
 
-// 加载仓库根 .env（tsx 不会自动加载）。缺文件时忽略，回退到 dbConfigFromEnv 默认值。
-try {
-  ;(process as unknown as { loadEnvFile: (p?: string) => void }).loadEnvFile("../../.env")
-} catch {
-  /* .env 不存在则用默认（本地 dev MySQL） */
-}
+// env 加载统一走 scripts/load-env.mjs。⚠️ 目标库随 APP_ENV 走（APP_ENV=test → .env.test 的库）。
+loadEnv()
 
 async function main(): Promise<void> {
   const { db, pool } = createDb()

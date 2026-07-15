@@ -1,7 +1,25 @@
 import path from "node:path"
+import { loadEnv } from "../../scripts/load-env.mjs"
+
+// 加载仓库根 env（多环境 profile：APP_ENV=local|test|prod）。
+// ⚠️ 必须在此显式加载：Next 只会自动读 apps/web/.env*，【不会】读 monorepo 根的 .env——
+// 此前根 .env 里的 NEXT_PUBLIC_* 因此静默不生效（改了没反应的坑，2026-07-15 修）。
+// 后端也读同一份根 env，前后端配置从此单一真相源，不会各持一半打架。
+const APP_ENV = loadEnv()
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 显式把用到的 NEXT_PUBLIC_* 注入客户端包。
+  // 不靠 Next 对 process.env.NEXT_PUBLIC_* 的自动内联——那套只认它自己加载的 .env 文件，
+  // 我们的值是上面 loadEnv() 塞进 process.env 的，必须经这里显式过一道才会进浏览器包。
+  env: {
+    // 登录门禁：test/prod profile 置 true → 无平台 token 时先过 chatpal 邮箱验证码登录。
+    NEXT_PUBLIC_REQUIRE_LOGIN: process.env.NEXT_PUBLIC_REQUIRE_LOGIN ?? "",
+    // 本地开发身份（须与后端 DEV_FAKE_USER_ID 一致）；关旁路的环境下它发出去也会被后端 401。
+    NEXT_PUBLIC_DEV_USER_ID: process.env.NEXT_PUBLIC_DEV_USER_ID ?? "",
+    // 仅用于页面上标明当前连的是哪套环境，避免对着测试环境以为在本地（或反之）。
+    NEXT_PUBLIC_APP_ENV: APP_ENV,
+  },
   // 显式锁定 workspace 根，避免 Next 误把 /home/ec2-user 下的父 lockfile 当根。
   turbopack: {
     root: path.resolve(import.meta.dirname, "../.."),

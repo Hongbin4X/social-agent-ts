@@ -7,15 +7,12 @@
 // initialAccounts / initialPosts / initialCalendar（此处内联，不跨包 import —— @social/db 不依赖 apps/web）。
 
 import type { Account, CalendarItem, SocialPost } from "@social/shared"
+import { loadEnv } from "../../../scripts/load-env.mjs"
 import { createDb } from "./client"
 import { createRepositories } from "./repositories/index"
 
-// 加载仓库根 .env（拿 DEV_FAKE_USER_ID 与 DB 连接）。
-try {
-  ;(process as unknown as { loadEnvFile: (p?: string) => void }).loadEnvFile("../../.env")
-} catch {
-  /* .env 不存在则用默认（本地 dev MySQL） */
-}
+// env 加载统一走 scripts/load-env.mjs（拿 DEV_FAKE_USER_ID 与 DB 连接）。
+loadEnv()
 
 const USER_ID = process.env.DEV_FAKE_USER_ID ?? "1000000000000000001"
 

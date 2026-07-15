@@ -1,15 +1,13 @@
 // 灌入 TEST-DATA.md 里的高质量测试品牌档案（作为当前工作区下的多个 project）。
 // 幂等：按 brandName 判重，已存在则跳过。运行：pnpm --filter @social/db db:seed:brands
 import type { ContentGoal, Platform } from "@social/shared"
+import { loadEnv } from "../../../scripts/load-env.mjs"
 import { createDb } from "./client"
 import type { ProjectInput } from "./repositories/project.repo"
 import { createRepositories } from "./repositories"
 
-try {
-  ;(process as unknown as { loadEnvFile: (p?: string) => void }).loadEnvFile("../../.env")
-} catch {
-  /* 用已有环境变量 */
-}
+// env 加载统一走 scripts/load-env.mjs。
+loadEnv()
 
 const BRANDS: ProjectInput[] = [
   {
