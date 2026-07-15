@@ -65,9 +65,17 @@ describe("resolveUserId", () => {
     expect(got).toBeNull()
   })
 
-  it("无 Bearer + 有 x-user-id → 用 x-user-id（本地后门）", async () => {
-    const got = await resolveUserId({ authorization: null, xUserId: " 123 " }, { jwtSecret: SECRET })
+  it("无 Bearer + 有 x-user-id + 开着旁路(配了 devFakeUserId) → 用 x-user-id（本地开发指定身份）", async () => {
+    const got = await resolveUserId({ authorization: null, xUserId: " 123 " }, { jwtSecret: SECRET, devFakeUserId: "fake" })
     expect(got).toBe("123")
+  })
+
+  // 【P0 回归】2026-07-15 自审修复：曾经 x-user-id 是无条件后门（不看 devFakeUserId），
+  // 于是生产按文档清空 DEV_FAKE_USER_ID 后旁路仍开着 —— 不带 Authorization 直接甩 x-user-id
+  // 即可冒充任意用户 + 扣其真金余额。旁路必须整体由 devFakeUserId 门控，留空即彻底关闭。
+  it("无 Bearer + 有 x-user-id + 关了旁路(devFakeUserId 留空) → null（不许冒充，转 401）", async () => {
+    const got = await resolveUserId({ authorization: null, xUserId: "2000208" }, { jwtSecret: SECRET })
+    expect(got).toBeNull()
   })
 
   it("无 Bearer + 无 x-user-id + 有 devFakeUserId → 用 fake（本地旁路）", async () => {
