@@ -49,6 +49,8 @@ function makeCreditBilling(
   if (!config.jwtSecret || !config.aiApiBaseUrl) {
     throw new Error("BILLING_MODE=real 需要配置 JWT_SECRET 与 AI_API_BASE_URL（缺一不可）")
   }
+  // 账本状态机见 glbgpt-billing.ts BillingLedger 注释：
+  // reserved → settled / refunded / rejected(余额不足没生成) / settle_failed(已交付但漏扣，待补偿)。
   const ledger: BillingLedger = {
     async create(input) {
       const { id } = await repos.billingRecords.create({ ...input, actionType: input.actionType as BillingActionType, status: "reserved" })
@@ -56,15 +58,20 @@ function makeCreditBilling(
     },
     markSettled: (id, patch) => repos.billingRecords.update(id, { status: "settled", ...patch }),
     markRefunded: (id) => repos.billingRecords.update(id, { status: "refunded" }),
-    async getUserId(id) {
-      return (await repos.billingRecords.getById(id))?.userId ?? null
+    markRejected: (id) => repos.billingRecords.update(id, { status: "rejected" }),
+    markSettleFailed: (id) => repos.billingRecords.update(id, { status: "settle_failed" }),
+    async getContext(id) {
+      const row = await repos.billingRecords.getById(id)
+      return row ? { userId: row.userId, actionType: row.actionType } : null
     },
   }
   return new GlbgptCreditBilling({
     baseUrl: config.aiApiBaseUrl,
     jwtSecret: config.jwtSecret,
     productNo: config.billingProductNo,
-    billingModel: config.textBillingModel,
+    textBillingModel: config.textBillingModel,
+    // 图片计费档（once 按次，规格内嵌键）。与文本档分流，绝不能让图片套用文本 token 档（≈免费）。
+    imageBillingModel: config.imageBillingModel,
     ledger,
     logger: console,
   })

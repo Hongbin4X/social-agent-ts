@@ -26,6 +26,11 @@ export interface ServerConfig {
   billingProductNo: string
   /** 文本计费模型（robot 表 tokens 行，如 gpt-5.4；reserve 的 checkPermission 与 settle 的 recordBill 用）。 */
   textBillingModel: string
+  /**
+   * 图片计费档（robot 的 once 按次计价行；是「规格内嵌的计费键」，不是模型名）。
+   * 必须与 GENERATION_IMAGE_MODEL 配套，换出图模型/规格就要换它，否则扣错档。见 glbgpt-billing.ts 顶部契约注释。
+   */
+  imageBillingModel: string
   /** chatpal 根地址（登录代理用），如 http://<测试服内网>:8089；后端自拼 /user-api/user/*。空=登录路由如实 501。 */
   chatpalBaseUrl?: string
   /** 平台渠道标识（chatpal emailLogin/sendEmailVerifyCode 的 channel 字段）。默认 chatpal。 */
@@ -44,6 +49,10 @@ export function serverConfigFromEnv(env = process.env): ServerConfig {
     aiApiBaseUrl: env.AI_API_BASE_URL?.trim() || undefined,
     billingProductNo: env.BILLING_PRODUCT_NO?.trim() || "glbgpt",
     textBillingModel: env.TEXT_BILLING_MODEL?.trim() || "gpt-5.4",
+    // 默认 nano_banana_2_1k：出图模型 gemini-3.1-flash-image-preview 在平台侧【就是】nano_banana_2
+    // （GenerationAPI.java:3780 视为同一模型），我们不传 resolution → 平台默认 1K（:3833）→ 键为 nano_banana_2_1k。
+    // 其余规格键：nano_banana_2_{0.5k,2k,4k}（:3826-3830）。换出图模型/规格必须同步改。
+    imageBillingModel: env.IMAGE_BILLING_MODEL?.trim() || "nano_banana_2_1k",
     chatpalBaseUrl: env.CHATPAL_BASE_URL?.trim() || undefined,
     platformChannel: env.PLATFORM_CHANNEL?.trim() || "chatpal",
   }

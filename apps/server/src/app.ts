@@ -11,6 +11,7 @@ import { CREDIT_COSTS } from "@social/shared"
 import { publishRoutes } from "./routes/publish"
 import { connectionRoutes, handleXCallbackRedirect } from "./routes/connections"
 import { type AppEnv, authMiddleware } from "./auth"
+import { BillingPermissionError } from "./services/glbgpt-billing"
 import { serverConfigFromEnv } from "./config"
 import { workspaceRoutes } from "./routes/workspace"
 import { projectRoutes } from "./routes/projects"
@@ -21,6 +22,32 @@ import { generateRoutes } from "./routes/generate"
 import { authRoutes } from "./routes/auth"
 
 export const app = new Hono<AppEnv>()
+
+// ── 全局错误处理（2026-07-15 自审补：此前【完全没有】，是个真窟窿）──
+// GenerationService 的 reserveCredits 刻意在 try 【外】（余额不足就不该生成），异常直接穿透到这里。
+// 此前没有 onError → Hono 默认处理器返回 HTTP 500 纯文本 "Internal Server Error"：
+//   · 余额不足的用户看到「服务器炸了」，而不是「去充值」；
+//   · subCode（4002 需充值 / 4009 需 PRO）全部丢失，前端无法弹对应引导；
+//   · 代码里三处注释信誓旦旦写着「路由转 402 引导充值」，而那个路由根本不存在。
+// 现在统一在此映射。注意：这些错误发生在生成【之前】，没扣钱、也没有生成产物。
+app.onError((err, c) => {
+  if (err instanceof BillingPermissionError) {
+    // ⚠️ 按失败性质分流，别一律报「余额不足」（2026-07-15 实机踩到：平台的 401「Invalid token」
+    // 被当成余额不足报给用户 → 用户去充值，充完还是不行，真因是我方密钥不对，排查方向被彻底带偏）。
+    if (err.kind === "insufficient") {
+      // 402 + 原样透传平台 data（含 subCode：4002需充值/4009需PRO…），前端据此弹对应引导。
+      return c.json({ error: "insufficient_credits", message: "余额不足或权益不够，请充值后重试", data: err.data }, 402)
+    }
+    if (err.kind === "unauthorized") {
+      // 平台不认我方服务端身份 = 我方配置事故，与用户余额无关。给 502 + 如实话术，绝不引导用户充值。
+      return c.json({ error: "billing_unavailable", message: "计费服务暂时不可用（服务端身份校验失败），请稍后重试或联系支持" }, 502)
+    }
+    return c.json({ error: "billing_unavailable", message: "计费服务暂时不可用，请稍后重试" }, 502)
+  }
+  console.error("[app] 未处理异常:", err)
+  // 兜底转 JSON（默认纯文本会让前端 JSON 解析失败，错上加错）；不回堆栈，避免泄露内部细节。
+  return c.json({ error: "internal_error", message: "服务器内部错误" }, 500)
+})
 
 app.get("/health", (c) => c.json({ ok: true, service: "super-social-agent-server", stage: "P0-scaffold" }))
 
