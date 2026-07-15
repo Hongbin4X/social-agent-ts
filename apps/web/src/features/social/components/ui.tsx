@@ -72,9 +72,6 @@ const STATUS_META: Record<PostStatus, { label: string; dot: string; text: string
   Published: { label: "Published", dot: "bg-status-published", text: "text-status-published", bg: "bg-[oklch(0.95_0.05_150)]" },
   Failed: { label: "Failed", dot: "bg-status-failed", text: "text-status-failed", bg: "bg-[oklch(0.95_0.04_27)]" },
   Cancelled: { label: "Cancelled", dot: "bg-status-draft", text: "text-muted-foreground", bg: "bg-muted" },
-  ManualFallback: { label: "Manual fallback", dot: "bg-status-fallback", text: "text-[oklch(0.48_0.13_55)]", bg: "bg-[oklch(0.96_0.04_70)]" },
-  ManuallyPublished: { label: "Manually published", dot: "bg-status-manual", text: "text-status-manual", bg: "bg-[oklch(0.95_0.03_200)]" },
-  Archived: { label: "Archived", dot: "bg-status-draft", text: "text-muted-foreground", bg: "bg-muted" },
 }
 
 export function StatusBadge({ status }: { status: PostStatus }) {

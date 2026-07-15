@@ -70,7 +70,7 @@ export function BatchPublishModal({
                 }
               >
                 {auto ? <CircleCheck className="size-3" /> : <TriangleAlert className="size-3" />}
-                {auto ? t("Auto publishing available", "支持自动发布") : t("Manual fallback required", "需转为手动发布")}
+                {auto ? t("Auto publishing available", "支持自动发布") : t("Auto publishing unsupported", "不支持自动发布")}
               </span>
             </div>
           )
@@ -79,13 +79,8 @@ export function BatchPublishModal({
       {manualCount > 0 ? (
         <p className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
           {t(
-            `${manualCount} platform${manualCount === 1 ? "" : "s"} cannot auto-publish in P0 and will enter`,
-            `${manualCount} 个平台在 P0 阶段无法自动发布，将转入`,
-          )}{" "}
-          <span className="font-medium text-[oklch(0.48_0.13_55)]">{t("Manual fallback", "转手动")}</span>
-          {t(
-            ". You can still confirm — auto platforms become Scheduled.",
-            "。你仍可确认——可自动发布的平台将变为已排期。",
+            `${manualCount} platform${manualCount === 1 ? "" : "s"} do not support auto publishing and will be skipped. You can still confirm — auto platforms become Scheduled.`,
+            `${manualCount} 个平台不支持自动发布，将被跳过。你仍可确认——可自动发布的平台将变为已排期。`,
           )}
         </p>
       ) : null}

@@ -116,8 +116,10 @@ export class LlmContentGenerator implements ContentGenerator, UsageReporting {
     // 账号/发布模式/状态/建议时间等由平台规则派生（与桩、前端原型口径一致）。
     return {
       platform,
-      account: d.account,
-      accountType: d.accountType,
+      // 账号身份留空：生成层不知道用户连了哪些账号，绝不编造（曾经这里填 "@northstar_ai" 这类假名）。
+        // 前端 store 收到变体后用真实已连接账号回填（resolveVariantAccount）。
+      account: "",
+      accountType: undefined,
       hook: parsed.hook?.trim() || input.topic,
       body: parsed.body?.trim() || "",
       hashtags: (parsed.hashtags ?? b.hashtags ?? "").trim(),
@@ -126,7 +128,8 @@ export class LlmContentGenerator implements ContentGenerator, UsageReporting {
       format: parsed.format?.trim() || d.format,
       mediaAsset: parsed.mediaAsset?.trim() || d.media,
       publishMode: mode,
-      state: mode === "manual" ? "Manual fallback" : "Valid",
+      // 非 auto 平台 = 该平台不支持自动发布（历史上的手动兜底状态已整套移除）。
+    state: mode === "manual" ? "Unsupported" : "Valid",
       suggestedTime: "10:00",
       // 只有 image 模式才把模型的 imageSlots 落到 PostVariant；非 image 模式恒 undefined
       // （前端据此判断是否渲染内联配图占位块，不能凭 imageSlots 是否存在误判模式）。

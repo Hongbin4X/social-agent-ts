@@ -12,7 +12,6 @@ import type { AdapterDeps, MediaResolver } from "./ports"
 import { PublisherRegistry } from "./registry"
 import { XPublisher, type XConfig } from "./adapters/x"
 import { MetaPublisher, type MetaConfig } from "./adapters/meta"
-import { ManualFallbackPublisher } from "./adapters/manual-fallback"
 import { AggregatorPublisher, type AggregatorConfig } from "./adapters/aggregator"
 
 export type PublisherMode = "direct" | "aggregator"
@@ -37,8 +36,9 @@ export function createPublisherRegistry(config: PublisherConfig): PublisherRegis
 
   for (const platform of ALL_PLATFORMS) {
     if (!PLATFORM_CAPABILITIES[platform].autoPublish) {
-      // TikTok / YouTube / Reddit：两种 mode 下都是手动兜底。
-      reg.register(new ManualFallbackPublisher(platform))
+      // TikTok / YouTube / Reddit 不支持自动发布，不注册任何 adapter。
+      // 曾经这里注册 ManualFallbackPublisher 返回 manual_fallback，随「转手动」整套移除——
+      // 注：那条路在真实前端链路里从未被走到过（store 在发布前就把 manual 变体过滤掉了）。
       continue
     }
     if (config.mode === "aggregator") {

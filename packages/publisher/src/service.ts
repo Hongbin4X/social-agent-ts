@@ -16,7 +16,6 @@
 
 import type {
   BatchPublishResult,
-  ManualFallbackReason,
   Platform,
   PublishErrorCode,
   PublishItem,
@@ -57,19 +56,16 @@ export class PublishingService {
     const adapter = this.deps.registry.get(target.platform)
     if (!adapter) return failed(target, "unsupported_platform", `无 ${target.platform} 发布适配器`)
 
-    // 2) 平台天然手动：直接交给手动兜底 adapter（它返回 manual_fallback）。
-    if (!adapter.capability.autoPublish) {
-      return adapter.publish({ target, content })
-    }
-    // 3) manual 账号不能自动发（spec §3）。
+    // 2) manual 账号不能自动发（spec §3）。
+    // 曾经返回 manual_fallback，现如实 failed——「转手动」整套已移除。
     if (target.accountType === "manual") {
-      return manualFallback(target, "manual_account", "手动账号不支持自动发布，请导出手动发布")
+      return failed(target, "unsupported_platform", "手动账号不支持自动发布")
     }
 
     // 4) 解析连接。
     const conn = await this.deps.tokenStore.getConnection(target.accountId, target.platform)
     if (!conn) return failed(target, "not_connected", "账号未完成 OAuth 连接（联调阶段属正常）")
-    if (isExpired(conn)) return manualFallback(target, "token_expired", "授权过期，转手动发布")
+    if (isExpired(conn)) return failed(target, "token_expired", "授权已过期，请重新授权账号")
 
     // 5) provider cost 预扣（只有真有第三方成本的平台才走计费，如 X）。
     const usdCents = estimateProviderCostUsdCents(target.platform, content)
@@ -120,16 +116,3 @@ function failed(target: PublishTarget, code: PublishErrorCode, message: string):
   return { outcome: "failed", platform: target.platform as Platform, accountId: target.accountId, code, message }
 }
 
-function manualFallback(
-  target: PublishTarget,
-  reason: ManualFallbackReason,
-  exportHint: string,
-): PublishResult {
-  return {
-    outcome: "manual_fallback",
-    platform: target.platform as Platform,
-    accountId: target.accountId,
-    reason,
-    exportHint,
-  }
-}

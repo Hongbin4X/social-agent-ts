@@ -47,7 +47,7 @@ postRoutes.get("/:id", async (c) => {
 })
 
 // 更新帖子。两类调用:
-//   1) 仅改状态(归档/排期/标记已发布等)—— body 只有 status,不带 projectId,保持向后兼容,不强制归属校验。
+//   1) 仅改状态(排期/发布结果回写等)—— body 只有 status,不带 projectId,保持向后兼容,不强制归属校验。
 //   2) 二次修改草稿存回 —— body 带 projectId + variants,则在校验归属后既更新帖子字段、又整替变体。
 postRoutes.patch("/:id", async (c) => {
   const { workspace, repos } = await currentWorkspace(c)

@@ -62,7 +62,10 @@ export {
   postThread,
   postArticle,
   uploadMedia,
+  planXTweets,
   splitIntoThreadSegments,
+  // X 的加权长度（CJK 每字算 2）——判断是否超单条上限必须用它，不能用 .length。
+  xWeightedLength,
   X_TWEET_MAX,
   type PostedTweet,
   type PostedThread,
@@ -73,5 +76,4 @@ export {
 // adapter 与其配置类型（一般不用直接 new，但联调/自定义装配时可能要）。
 export { XPublisher, type XConfig } from "./adapters/x"
 export { MetaPublisher, type MetaConfig } from "./adapters/meta"
-export { ManualFallbackPublisher } from "./adapters/manual-fallback"
 export { AggregatorPublisher, type AggregatorConfig } from "./adapters/aggregator"

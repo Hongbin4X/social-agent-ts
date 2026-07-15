@@ -1,5 +1,5 @@
 // 日历路由：项目级日历任务（calendar_item）+ 每平台子任务（calendar_job）落库。
-// repo 层已有 create/update/updateJobs 能力，这里把写操作暴露成端点，让前端排期/改期/取消/立即发布/转手动都持久化。
+// repo 层已有 create/update/updateJobs 能力，这里把写操作暴露成端点，让前端排期/改期/取消/立即发布都持久化。
 import { Hono } from "hono"
 import type { CalendarItem, PostStatus } from "@social/shared"
 import type { AppEnv } from "../auth"
@@ -66,7 +66,7 @@ calendarRoutes.patch("/:id", async (c) => {
   return c.json({ item })
 })
 
-// 改子任务（立即发布自动平台 / 转手动 / 标记手动已发）——按 (calendarItemId, projectId, platform) 定位，带项目级隔离
+// 改子任务（立即发布自动平台）——按 (calendarItemId, projectId, platform) 定位，带项目级隔离
 calendarRoutes.patch("/:id/jobs", async (c) => {
   const { workspace, repos } = await currentWorkspace(c)
   if (!workspace) return c.json({ error: "not_found", message: "工作区不存在" }, 404)

@@ -2,9 +2,13 @@ import { AUTO_PLATFORMS } from "@/features/social/store"
 import { translate } from "@/features/social/i18n"
 import type { Platform, PostVariant, VariantState } from "@social/shared"
 import { CircleCheck, TriangleAlert } from "lucide-react"
+import { currentWeekDays } from "@/features/social/lib/schedule-time"
 
 /* ---------- calendar day options ---------- */
-export const DAYS = ["Mon Jul 6", "Tue Jul 7", "Wed Jul 8", "Thu Jul 9", "Fri Jul 10", "Sat Jul 11", "Sun Jul 12"]
+// 可选排期日 = 真实的本周（周一→周日）。曾经写死 2026-07-06~12，
+// 导致用户只能选那一周、且与日历周视图的列头对不上（任务排了看不见）。
+// 注：模块级求值 = 页面加载时算一次；这个原型不考虑跨零点长驻的场景。
+export const DAYS = currentWeekDays()
 
 /* ---------- per-platform option sets ---------- */
 export const FORMAT_PRESETS: Record<Platform, string[]> = {
@@ -28,7 +32,6 @@ export const MEDIA_OPTIONS: Record<Platform, string[]> = {
 export const STATE_META: Record<VariantState, { label: string; cls: string; icon: typeof CircleCheck }> = {
   Valid: { label: "Valid", cls: "bg-[oklch(0.95_0.05_150)] text-status-published", icon: CircleCheck },
   "Needs edits": { label: "Needs edits", cls: "bg-[oklch(0.95_0.04_80)] text-[oklch(0.45_0.12_70)]", icon: TriangleAlert },
-  "Manual fallback": { label: "Manual fallback", cls: "bg-[oklch(0.96_0.04_70)] text-[oklch(0.48_0.13_55)]", icon: TriangleAlert },
   Unsupported: { label: "Unsupported publishing", cls: "bg-[oklch(0.95_0.04_27)] text-status-failed", icon: TriangleAlert },
 }
 
@@ -47,8 +50,9 @@ export function deriveState(v: Pick<PostVariant, "platform" | "format" | "accoun
   if (!v.body.trim()) return "Needs edits"
   const mode = deriveMode(v)
   if (mode === "auto") return "Valid"
-  if (v.accountType === "connected" && (v.platform === "TikTok" || v.platform === "YouTube")) return "Unsupported"
-  return "Manual fallback"
+  // 非 auto = 该平台不支持自动发布（TikTok/YouTube/Reddit）。原先这里返回 "Manual fallback"，
+  // 但那套手动兜底已整套移除，事实就是"不支持"，不再假装有别的路可走。
+  return "Unsupported"
 }
 
 export function copyTypeLabel(v: Pick<PostVariant, "platform" | "format">): string {

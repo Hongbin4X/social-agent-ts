@@ -70,14 +70,13 @@ export function AgentHome() {
   const drafts = count((s) => s === "Draft")
   const planned = count((s) => s === "Planned") + plan.length
   const scheduled = count((s) => s === "Scheduled")
-  const published = count((s) => s === "Published" || s === "ManuallyPublished")
+  const published = count((s) => s === "Published")
   const failed = count((s) => s === "Failed")
-  const fallback = count((s) => s === "ManualFallback")
 
   const recentDrafts = posts.filter((p) => p.status === "Draft" || p.status === "Ready").slice(0, 4)
   const upcoming = calendar.filter((c) => c.status === "Scheduled" || c.status === "Planned").slice(0, 4)
   const recentResults = posts
-    .filter((p) => ["Published", "ManuallyPublished", "Failed", "ManualFallback"].includes(p.status))
+    .filter((p) => ["Published", "Failed"].includes(p.status))
     .slice(0, 4)
 
   const expired = accounts.filter((a) => a.status === "Expired")
@@ -88,8 +87,6 @@ export function AgentHome() {
   const attention: { text: string; tone: string; action: string; onClick: () => void }[] = []
   if (failed > 0)
     attention.push({ text: t(`${failed} failed publish job${failed > 1 ? "s" : ""}`, `${failed} 个发布任务失败`), tone: "text-status-failed", action: t("Review in calendar", "在日历中查看"), onClick: () => setAgentTab("Calendar") })
-  if (fallback > 0)
-    attention.push({ text: t(`${fallback} manual fallback${fallback > 1 ? "s" : ""} awaiting action`, `${fallback} 个转手动任务待处理`), tone: "text-[oklch(0.48_0.13_55)]", action: t("Open calendar", "打开日历"), onClick: () => setAgentTab("Calendar") })
   expired.forEach((a) =>
     attention.push({ text: t(`${a.platform} token expired`, `${a.platform} 令牌已过期`), tone: "text-status-failed", action: t("Reconnect", "重新连接"), onClick: () => setAgentSecondary("accounts") }),
   )
@@ -225,13 +222,12 @@ export function AgentHome() {
         </Card>
       </div>
 
-      {/* status summary — 7 metrics */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
+      {/* status summary — 6 metrics */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
         <Stat label={t("Drafts", "草稿")} value={drafts} />
         <Stat label={t("Planned", "已计划")} value={planned} />
         <Stat label={t("Scheduled", "已排期")} value={scheduled} tone="text-status-scheduled" />
         <Stat label={t("Published", "已发布")} value={published} tone="text-status-published" />
-        <Stat label={t("Manual fallback", "转手动")} value={fallback} tone="text-[oklch(0.48_0.13_55)]" />
         <Stat label={t("Failed", "失败")} value={failed} tone="text-status-failed" />
         <Stat label={t("Est. credits", "预估积分")} value={credits} tone="text-brand" />
       </div>

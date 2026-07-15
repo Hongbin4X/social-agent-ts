@@ -3,7 +3,7 @@
 //  · DbTokenStore（实现 TokenStore）：发帖前读账号 token，**读时自动续期**——快过期就用 refresh_token 换新的，
 //    并把轮换后的 refresh_token 覆盖写回（demo 授权流程文档的头号翻车点：不写回=用户掉线）。
 //    续不了（无 refresh / refresh 失败）就把账号标成需重连并返回 null，绝不静默假装成功（铁律：不掩盖）。
-//    返回的连接恒是「立即可用的新鲜 token」，故 service 的 isExpired 判定永远通过、不会误落 manual_fallback。
+//    返回的连接恒是「立即可用的新鲜 token」，故 service 的 isExpired 判定永远通过。
 //
 //  · LocalProviderCostBilling（实现 BillingGateway）：provider cost（X 按次付费的第三方成本）预扣/结算/退款
 //    如实记进 ssa_billing_usage_record（本地账本）。**不做真实余额扣减、不假称对接 GLBGPT**——真实扣费是

@@ -43,10 +43,10 @@ const SEED_POSTS: SocialPost[] = [
   },
   {
     id: "post_3", title: "Customer spotlight: Acme cut reporting time by 70%", platforms: ["Instagram", "Reddit"], assetType: "Quote image",
-    status: "ManualFallback", tags: ["social-proof"], updatedAt: "Jul 9, 07:55", owner: "L", hasImage: true,
+    status: "Scheduled", tags: ["social-proof"], updatedAt: "Jul 9, 07:55", owner: "L", hasImage: true,
     variants: [
       { platform: "Instagram", account: "@northstar.ai", hook: "70% less time on reporting.", body: "How Acme rebuilt their weekly reporting with Northstar.", hashtags: "#AIProductivity", cta: "Start your free trial", format: "1:1", publishMode: "auto", state: "Valid", suggestedTime: "10:00" },
-      { platform: "Reddit", account: "u/northstar_team", hook: "We helped a customer cut reporting time by 70% [case study]", body: "Full breakdown of the workflow in the comments.", hashtags: "", cta: "Start your free trial", format: "16:9", publishMode: "manual", state: "Manual fallback", suggestedTime: "10:00" },
+      { platform: "Reddit", account: "u/northstar_team", hook: "We helped a customer cut reporting time by 70% [case study]", body: "Full breakdown of the workflow in the comments.", hashtags: "", cta: "Start your free trial", format: "16:9", publishMode: "manual", state: "Unsupported", suggestedTime: "10:00" },
     ],
   },
   {
@@ -56,8 +56,8 @@ const SEED_POSTS: SocialPost[] = [
   },
   {
     id: "post_5", title: "AMA recap: top 5 questions about AI productivity", platforms: ["Reddit", "X"], assetType: "Text",
-    status: "ManuallyPublished", tags: ["community"], updatedAt: "Jul 11, 13:20", owner: "L", hasImage: false,
-    variants: [{ platform: "Reddit", account: "u/northstar_team", hook: "AMA recap: your top 5 questions, answered", body: "Thanks to everyone who joined. Here are the highlights.", hashtags: "", cta: "Join the next AMA", format: "16:9", publishMode: "manual", state: "Manual fallback", suggestedTime: "12:00" }],
+    status: "Published", tags: ["community"], updatedAt: "Jul 11, 13:20", owner: "L", hasImage: false,
+    variants: [{ platform: "Reddit", account: "u/northstar_team", hook: "AMA recap: your top 5 questions, answered", body: "Thanks to everyone who joined. Here are the highlights.", hashtags: "", cta: "Join the next AMA", format: "16:9", publishMode: "manual", state: "Unsupported", suggestedTime: "12:00" }],
   },
   {
     id: "post_6", title: "Founder story: building Northstar with a 4-person team", platforms: ["X", "YouTube"], assetType: "Thumbnail + copy",
@@ -67,7 +67,7 @@ const SEED_POSTS: SocialPost[] = [
   {
     id: "post_7", title: "Behind the scenes: how we design features", platforms: ["Instagram", "YouTube"], assetType: "Cover image",
     status: "Ready", tags: ["bts"], updatedAt: "Jul 4, 11:10", owner: "L", hasImage: true,
-    variants: [{ platform: "Instagram", account: "@northstar.ai", hook: "How a Northstar feature goes from idea to ship.", body: "A look inside our design process.", hashtags: "#AIProductivity", cta: "Follow for more", format: "9:16", publishMode: "manual", state: "Manual fallback", suggestedTime: "18:00" }],
+    variants: [{ platform: "Instagram", account: "@northstar.ai", hook: "How a Northstar feature goes from idea to ship.", body: "A look inside our design process.", hashtags: "#AIProductivity", cta: "Follow for more", format: "9:16", publishMode: "manual", state: "Unsupported", suggestedTime: "18:00" }],
   },
   {
     id: "post_8", title: "5 prompts every founder should steal", platforms: ["X"], assetType: "Text",
@@ -78,10 +78,10 @@ const SEED_POSTS: SocialPost[] = [
 
 // ── 日历（项目级，5 个，含 jobs → variants）；postId 引用 mock 帖子 id，灌库时映射到真实 id ──
 const SEED_CALENDAR: CalendarItem[] = [
-  { id: "cal_1", postId: "post_1", topic: "Why small teams waste 6 hours a week", date: "Mon Jul 6", time: "09:00", status: "Published", variants: [{ platform: "X", account: "@northstar_ai", time: "09:00", publishMode: "auto", status: "Published" }, { platform: "Reddit", account: "u/northstar_team", time: "09:30", publishMode: "manual", status: "ManuallyPublished" }] },
+  { id: "cal_1", postId: "post_1", topic: "Why small teams waste 6 hours a week", date: "Mon Jul 6", time: "09:00", status: "Published", variants: [{ platform: "X", account: "@northstar_ai", time: "09:00", publishMode: "auto", status: "Published" }, { platform: "Reddit", account: "u/northstar_team", time: "09:30", publishMode: "manual", status: "Published" }] },
   { id: "cal_2", postId: "post_2", topic: "3 Northstar workflows", date: "Tue Jul 7", time: "11:30", status: "Scheduled", variants: [{ platform: "Instagram", account: "@northstar.ai", time: "11:30", publishMode: "auto", status: "Scheduled" }, { platform: "X", account: "@northstar_ai", time: "11:35", publishMode: "auto", status: "Scheduled" }] },
-  { id: "cal_3", postId: "post_4", topic: "Launch week: Northstar 2.0", date: "Fri Jul 10", time: "16:00", status: "Failed", variants: [{ platform: "X", account: "@northstar_ai", time: "16:00", publishMode: "auto", status: "Failed", reason: "Provider rate limit reached" }, { platform: "Instagram", account: "@northstar.ai", time: "16:05", publishMode: "auto", status: "Published" }, { platform: "YouTube", account: "Northstar AI", time: "16:10", publishMode: "manual", status: "ManualFallback", reason: "Video upload unsupported in P0" }] },
-  { id: "cal_4", postId: "post_3", topic: "Customer spotlight: Acme", date: "Thu Jul 9", time: "10:00", status: "ManualFallback", variants: [{ platform: "Instagram", account: "@northstar.ai", time: "10:00", publishMode: "auto", status: "Published" }, { platform: "Reddit", account: "u/northstar_team", time: "10:30", publishMode: "manual", status: "ManualFallback", reason: "Reddit auto publishing not supported" }] },
+  { id: "cal_3", postId: "post_4", topic: "Launch week: Northstar 2.0", date: "Fri Jul 10", time: "16:00", status: "Failed", variants: [{ platform: "X", account: "@northstar_ai", time: "16:00", publishMode: "auto", status: "Failed", reason: "Provider rate limit reached" }, { platform: "Instagram", account: "@northstar.ai", time: "16:05", publishMode: "auto", status: "Published" }, { platform: "YouTube", account: "Northstar AI", time: "16:10", publishMode: "manual", status: "Scheduled", reason: "Video upload unsupported in P0" }] },
+  { id: "cal_4", postId: "post_3", topic: "Customer spotlight: Acme", date: "Thu Jul 9", time: "10:00", status: "Scheduled", variants: [{ platform: "Instagram", account: "@northstar.ai", time: "10:00", publishMode: "auto", status: "Published" }, { platform: "Reddit", account: "u/northstar_team", time: "10:30", publishMode: "manual", status: "Scheduled", reason: "Reddit auto publishing not supported" }] },
   { id: "cal_5", postId: "post_8", topic: "5 prompts every founder should steal", date: "Wed Jul 8", time: "09:00", status: "Planned", variants: [{ platform: "X", account: "@northstar_ai", time: "09:00", publishMode: "auto", status: "Planned" }] },
 ]
 

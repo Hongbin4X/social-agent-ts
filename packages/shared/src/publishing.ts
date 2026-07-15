@@ -2,7 +2,7 @@
 //
 // 设计动机（铁律7 第一性原理 / 铁律2 别过度工程）：
 //   "接入各社交平台 API 真实发帖" 的本质是——把「一段内容」投递到「某个平台的某个账号」，
-//   拿回「远程帖子 id / url」或「一个明确的失败/转手动结果」。不管底层是直连平台 API 还是走聚合服务，
+//   拿回「远程帖子 id / url」或「一个明确的失败结果」。不管底层是直连平台 API 还是走聚合服务，
 //   对上层（后端路由、前端确认弹窗、计费）暴露的应该是同一套「请求 / 结果」形状。
 //   所以这里只定义"形状"，不定义"怎么发"（那是 @social/publisher 里 adapter 的事）。
 //
@@ -137,22 +137,14 @@ export type PublishErrorCode =
   | "provider_error" // 平台/聚合服务返回错误
   | "not_configured" // 本地缺少该平台的 API 配置（联调前的正常状态）
 
-/** 进入手动兜底的原因（spec §3：这些是产品要求的一等结果，不是"降级掩盖错误"）。 */
-export type ManualFallbackReason =
-  | "platform_manual_only" // TikTok/YouTube/Reddit：平台天然只走手动
-  | "manual_account" // 账号是 manual 类型
-  | "token_expired" // 授权过期，退回手动
-  | "permission_missing" // 权限缺失，退回手动
-  | "unsupported_media" // 媒体不支持自动发，退回手动
-
 /**
  * 单个 target 的发布结果。用 outcome 做可辨识联合，调用方 switch 处理，
- * 直接映射到 PostStatus（published→Published、scheduled→Scheduled、manual_fallback→ManualFallback、failed→Failed）。
+ * 直接映射到 PostStatus（published→Published、scheduled→Scheduled、failed→Failed）。
  */
 export type PublishResult =
   | PublishPublished
   | PublishScheduled
-  | PublishManualFallback
+ 
   | PublishFailed
 
 export interface PublishPublished {
@@ -174,15 +166,6 @@ export interface PublishScheduled {
   accountId: string
   scheduledAt: string
   providerCostCredits?: number
-}
-
-export interface PublishManualFallback {
-  outcome: "manual_fallback"
-  platform: Platform
-  accountId?: string
-  reason: ManualFallbackReason
-  /** 给用户的手动发布指引/导出物提示（spec §10.4 Content Library 导出）。 */
-  exportHint?: string
 }
 
 export interface PublishFailed {

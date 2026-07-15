@@ -34,37 +34,38 @@ function req(items: PublishItem[]): PublishRequest {
 const X_CONN: PlatformConnection = { accountId: "acc-x", accessToken: "tok-x", externalAccountId: "x-user" }
 
 describe("createPublisherRegistry", () => {
-  it("direct 模式：X 是自动发布 adapter，TikTok 是手动兜底", () => {
+  // 不支持自动发布的平台【不再注册任何 adapter】——「转手动」整套已移除（2026-07-15）。
+  // 曾经它们注册 ManualFallbackPublisher 返回 manual_fallback，但那条路在真实前端链路里
+  // 从未被走到过：store 在发布前就按 publishMode 把 manual 变体过滤掉了。
+  it("direct 模式：只注册支持自动发布的平台，TikTok/YouTube 不注册", () => {
     const reg = createPublisherRegistry({ mode: "direct" })
     expect(reg.get("X")?.capability.autoPublish).toBe(true)
-    expect(reg.get("TikTok")?.capability.autoPublish).toBe(false)
-    expect(reg.get("YouTube")?.capability.autoPublish).toBe(false)
-    expect(reg.platforms().sort()).toEqual(
-      ["Facebook", "Instagram", "Reddit", "TikTok", "X", "YouTube"],
-    )
+    expect(reg.get("TikTok")).toBeUndefined()
+    expect(reg.get("YouTube")).toBeUndefined()
+    expect(reg.platforms().sort()).toEqual(["Facebook", "Instagram", "X"])
   })
 
-  it("aggregator 模式下，TikTok/YouTube/Reddit 仍是手动兜底（spec §3 不变式）", () => {
+  it("aggregator 模式下同样不注册 TikTok/YouTube/Reddit", () => {
     const reg = createPublisherRegistry({ mode: "aggregator", aggregator: { apiKey: "k" } })
     expect(reg.get("X")?.capability.autoPublish).toBe(true)
-    expect(reg.get("Reddit")?.capability.autoPublish).toBe(false)
+    expect(reg.get("Reddit")).toBeUndefined()
   })
 })
 
 describe("PublishingService 路由", () => {
-  it("手动平台 → manual_fallback，且不碰 tokenStore / billing", async () => {
+  it("不支持自动发布的平台 → failed(unsupported_platform)，且不碰 tokenStore / billing", async () => {
     const tokenStore = makeTokenStore(null)
     const billing = makeBilling()
     const svc = new PublishingService({ registry: createPublisherRegistry({ mode: "direct" }), tokenStore, billing })
 
     const res = await svc.publishBatch(req([{ target: { platform: "TikTok", accountId: "a" }, content: { text: "hi" } }]))
 
-    expect(res.results[0].outcome).toBe("manual_fallback")
+    expect(res.results[0].outcome).toBe("failed")
     expect(tokenStore.getConnection).not.toHaveBeenCalled()
     expect(billing.reserveProviderCost).not.toHaveBeenCalled()
   })
 
-  it("manual 类型账号 → manual_fallback(manual_account)", async () => {
+  it("manual 类型账号 → failed(unsupported_platform)（手动账号不能自动发）", async () => {
     const svc = new PublishingService({
       registry: createPublisherRegistry({ mode: "direct" }),
       tokenStore: makeTokenStore(null),
@@ -74,8 +75,8 @@ describe("PublishingService 路由", () => {
       req([{ target: { platform: "X", accountId: "a", accountType: "manual" }, content: { text: "hi" } }]),
     )
     const r = res.results[0]
-    expect(r.outcome).toBe("manual_fallback")
-    if (r.outcome === "manual_fallback") expect(r.reason).toBe("manual_account")
+    expect(r.outcome).toBe("failed")
+    if (r.outcome === "failed") expect(r.code).toBe("unsupported_platform")
   })
 
   it("自动平台但账号未连接 → failed(not_connected)，如实暴露不假装", async () => {
@@ -90,7 +91,7 @@ describe("PublishingService 路由", () => {
     if (r.outcome === "failed") expect(r.code).toBe("not_connected")
   })
 
-  it("连接已过期 → manual_fallback(token_expired)", async () => {
+  it("连接已过期 → failed(token_expired)，提示重新授权（曾经是转手动，该路已移除）", async () => {
     const expired: PlatformConnection = { accountId: "a", accessToken: "t", expiresAt: "2000-01-01T00:00:00Z" }
     const svc = new PublishingService({
       registry: createPublisherRegistry({ mode: "direct" }),
@@ -99,8 +100,8 @@ describe("PublishingService 路由", () => {
     })
     const res = await svc.publishBatch(req([{ target: { platform: "X", accountId: "a" }, content: { text: "hi" } }]))
     const r = res.results[0]
-    expect(r.outcome).toBe("manual_fallback")
-    if (r.outcome === "manual_fallback") expect(r.reason).toBe("token_expired")
+    expect(r.outcome).toBe("failed")
+    if (r.outcome === "failed") expect(r.code).toBe("token_expired")
   })
 })
 

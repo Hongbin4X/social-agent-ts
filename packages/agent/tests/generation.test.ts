@@ -68,8 +68,11 @@ describe("StubContentGenerator.generateVariants", () => {
     expect(variants.map((v) => v.platform)).toEqual(["X", "Instagram", "Reddit"])
 
     const x = variants.find((v) => v.platform === "X")!
-    expect(x.account).toBe("@northstar_ai")
-    expect(x.accountType).toBe("connected")
+    // 生成层【绝不编造账号身份】：account 恒空、accountType 恒 undefined（2026-07-15）。
+    // 曾经这里填 "@northstar_ai"，导致用户看到编造的假账号——哪怕他真实授权的是别的号。
+    // 真实账号由前端 store 的 resolveVariantAccount 从已连接账号回填。
+    expect(x.account).toBe("")
+    expect(x.accountType).toBeUndefined()
     expect(x.format).toBe("Landscape 16:9")
     expect(x.publishMode).toBe("auto")
     expect(x.state).toBe("Valid")
@@ -80,10 +83,12 @@ describe("StubContentGenerator.generateVariants", () => {
     expect(x.body).toContain("AI productivity assistant for small teams")
     expect(x.body).toContain("Keep it punchy")
 
-    // Reddit 是手动兜底平台：manual + Manual fallback。
+    // Reddit 不支持自动发布：publishMode=manual + state=Unsupported。
+    // 曾经是 state="Manual fallback"（「转手动」），该状态已随整套兜底逻辑移除（2026-07-15）——
+    // 平台不支持就是不支持，不再用一个专门的状态假装有条手动兜底的路。
     const reddit = variants.find((v) => v.platform === "Reddit")!
     expect(reddit.publishMode).toBe("manual")
-    expect(reddit.state).toBe("Manual fallback")
+    expect(reddit.state).toBe("Unsupported")
   })
 
   it("确定性：同输入两次产出完全一致", async () => {
@@ -265,7 +270,7 @@ describe("LlmContentGenerator（注入 fetch 桩）", () => {
     expect(x.hook).toBe("AI hook")
     expect(x.body).toBe("AI body")
     expect(x.cta).toBe("Try now")
-    expect(x.account).toBe("@northstar_ai") // 平台派生字段仍来自默认
+    expect(x.account).toBe("") // 生成层不产账号身份（真 LLM 路径同样不许编造）
     expect(x.publishMode).toBe("auto")
 
     // 两个平台 → 两次 POST，均打到 /chat/completions，带 Bearer 与正确 model。

@@ -10,16 +10,17 @@ import {
   RefreshCw,
   Send,
   Ban,
-  Hand,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, Modal, PlatformBadge, StatusBadge, Field, Select } from "@/features/social/components/ui"
 import { useSocial } from "@/features/social/store"
 import { useLang } from "@/features/social/i18n"
 import type { CalendarItem } from "@social/shared"
+import { currentWeekDays } from "@/features/social/lib/schedule-time"
 
-const WEEK_DAYS = ["Mon Jul 6", "Tue Jul 7", "Wed Jul 8", "Thu Jul 9", "Fri Jul 10", "Sat Jul 11", "Sun Jul 12"]
-
+// 周视图列头 = 【真实的本周】。曾经写死 2026-07-06~12 那一周（原型遗留），
+// 后果是用户今天排的期在周视图里【根本看不到】——任务确实存在于 calendar 数组，只是没有对应的列。
+// 放在组件外会在模块加载时求值一次；这里用 useMemo 保证每次挂载都按"今天"重算。
 const TIME_SLOTS = ["08:00", "09:00", "10:00", "11:30", "13:00", "15:00", "16:00", "18:00"]
 
 function dayShort(day: string) {
@@ -33,7 +34,6 @@ export function CalendarTab() {
     rescheduleCalendarItem,
     cancelCalendarItem,
     publishCalendarItemNow,
-    convertCalendarItemToManual,
     schedulePost,
     posts,
     setAgentTab,
@@ -43,6 +43,9 @@ export function CalendarTab() {
   const [view, setView] = useState<"week" | "month">("week")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [reschedule, setReschedule] = useState<{ id: string; date: string; time: string } | null>(null)
+
+  // 本周 7 天（周一→周日），按"今天"算。取代原型里写死的那一周。
+  const WEEK_DAYS = useMemo(() => currentWeekDays(), [])
 
   const selected = calendar.find((c) => c.id === selectedId) ?? null
 
@@ -55,9 +58,9 @@ export function CalendarTab() {
     }
     for (const day of Object.keys(map)) map[day].sort((a, b) => a.time.localeCompare(b.time))
     return map
-  }, [calendar])
+  }, [calendar, WEEK_DAYS])
 
-  const needsAttention = calendar.filter((c) => c.status === "Failed" || c.status === "ManualFallback")
+  const needsAttention = calendar.filter((c) => c.status === "Failed")
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5 px-6 py-8">
@@ -106,8 +109,8 @@ export function CalendarTab() {
           <AlertTriangle className="size-4 shrink-0 text-status-fallback" />
           <p className="text-sm text-foreground">
             {t(
-              `${needsAttention.length} job${needsAttention.length === 1 ? "" : "s"} need attention — failed or manual fallback.`,
-              `${needsAttention.length} 个任务需要关注 —— 失败或转手动。`,
+              `${needsAttention.length} job${needsAttention.length === 1 ? "" : "s"} need attention — failed.`,
+              `${needsAttention.length} 个任务需要关注 —— 发布失败。`,
             )}
           </p>
         </div>
@@ -169,7 +172,6 @@ export function CalendarTab() {
           setSelectedId(null)
         }}
         onPublishNow={(id) => publishCalendarItemNow(id)}
-        onConvertManual={(id) => convertCalendarItemToManual(id)}
         onRetry={(item) => {
           const post = posts.find((p) => p.id === item.postId)
           if (post) schedulePost(post)
@@ -187,8 +189,8 @@ export function CalendarTab() {
         onClose={() => setReschedule(null)}
         title={t("Reschedule job", "重新排期")}
         description={t(
-          "Pick a new day and time. Auto platforms will re-queue; manual fallbacks keep their reminder.",
-          "选择新的日期与时间。自动平台将重新排队；转手动的任务会保留其提醒。",
+          "Pick a new day and time. Auto platforms will re-queue.",
+          "选择新的日期与时间。自动平台将重新排队。",
         )}
         footer={
           <>
@@ -299,7 +301,6 @@ function JobDrawer({
   onReschedule,
   onCancel,
   onPublishNow,
-  onConvertManual,
   onRetry,
   onGoToLibrary,
 }: {
@@ -308,7 +309,6 @@ function JobDrawer({
   onReschedule: (item: CalendarItem) => void
   onCancel: (id: string) => void
   onPublishNow: (id: string) => void
-  onConvertManual: (id: string) => void
   onRetry: (item: CalendarItem) => void
   onGoToLibrary: () => void
 }) {
@@ -371,7 +371,7 @@ function JobDrawer({
               <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span className="tabular-nums">{t("Fires at", "触发于")} {v.time}</span>
                 <span className={v.publishMode === "auto" ? "text-status-published" : "text-status-fallback"}>
-                  {v.publishMode === "auto" ? t("Auto publish", "自动发布") : t("Manual fallback", "转手动")}
+                  {v.publishMode === "auto" ? t("Auto publish", "自动发布") : t("Manual publish", "手动发布")}
                 </span>
               </div>
               {v.reason ? (
@@ -398,9 +398,6 @@ function JobDrawer({
             </Button>
             <Button variant="outline" size="sm" disabled={isDone || !hasAuto} onClick={() => onPublishNow(item.id)}>
               <Send className="size-4" /> {t("Publish now", "立即发布")}
-            </Button>
-            <Button variant="outline" size="sm" disabled={isDone || !hasAuto} onClick={() => onConvertManual(item.id)}>
-              <Hand className="size-4" /> {t("To manual", "转为手动")}
             </Button>
             <Button variant="outline" size="sm" disabled={isDone} onClick={() => onCancel(item.id)}>
               <Ban className="size-4" /> {t("Cancel job", "取消任务")}

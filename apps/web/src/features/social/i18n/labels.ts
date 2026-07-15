@@ -16,9 +16,6 @@ export const STATUS_LABELS: Record<PostStatus, LangEntry> = {
   Published: { en: "Published", zh: "已发布" },
   Failed: { en: "Failed", zh: "失败" },
   Cancelled: { en: "Cancelled", zh: "已取消" },
-  ManualFallback: { en: "Manual fallback", zh: "转手动" },
-  ManuallyPublished: { en: "Manually published", zh: "已手动发布" },
-  Archived: { en: "Archived", zh: "已归档" },
 }
 
 export const ACCOUNT_STATUS_LABELS: Record<AccountStatus, LangEntry> = {
@@ -33,7 +30,6 @@ export const ACCOUNT_STATUS_LABELS: Record<AccountStatus, LangEntry> = {
 export const VARIANT_STATE_LABELS: Record<VariantState, LangEntry> = {
   Valid: { en: "Valid", zh: "有效" },
   "Needs edits": { en: "Needs edits", zh: "需修改" },
-  "Manual fallback": { en: "Manual fallback", zh: "转手动" },
   Unsupported: { en: "Unsupported", zh: "不支持" },
 }
 
@@ -54,7 +50,6 @@ export const METRIC_LABELS: Record<string, LangEntry> = {
   clicks: { en: "Link clicks", zh: "链接点击" },
   followers: { en: "Net new followers", zh: "净增粉丝" },
   failed: { en: "Failed jobs", zh: "失败任务" },
-  manual: { en: "Manual fallbacks", zh: "转手动数" },
   video: { en: "Video views", zh: "视频播放" },
 }
 

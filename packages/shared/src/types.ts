@@ -19,9 +19,6 @@ export type PostStatus =
   | "Published"
   | "Failed"
   | "Cancelled"
-  | "ManualFallback"
-  | "ManuallyPublished"
-  | "Archived"
 
 export type AccountStatus =
   | "NotConnected"
@@ -44,7 +41,7 @@ export type PublishMode = "auto" | "manual"
  */
 export type XPostType = "tweet" | "thread" | "article"
 
-export type VariantState = "Valid" | "Needs edits" | "Manual fallback" | "Unsupported"
+export type VariantState = "Valid" | "Needs edits" | "Unsupported"
 
 export type ContentGoal =
   | "Grow awareness"
@@ -247,3 +244,11 @@ export type BillingActionType =
   | "modifyImage"
   | "publish"
   | "generateRecommendations"
+
+/**
+ * 平台接口的 device.deviceType 取值。
+ * ⚠️ 平台的发码端点用它决定要不要做人机验证：`if (!"mobile".equals(deviceType))` 才校验
+ * Turnstile/hCaptcha。我们作为服务端代理没有 Turnstile token，联调期走 "mobile" 绕过；
+ * 上生产应前端接 Turnstile 后传真实值。见 apps/server/src/services/chatpal-auth.ts 文件头。
+ */
+export type PlatformDeviceType = "mobile" | "pc" | "web"

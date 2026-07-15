@@ -31,20 +31,24 @@ import { insertImageToken, platformPublishMode } from "@social/shared"
 import type { ContentGenerator } from "../ports"
 import { GeneratorError } from "../errors"
 
-// ── 平台展示默认（复刻前端 store 的 VARIANT_DEFAULTS）。llm.ts 也复用它填模型没给的字段。 ──
+// ── 平台展示默认（格式/媒体类型）。llm.ts 也复用它填模型没给的字段。 ──
+//
+// ⚠️ 这里【不再有 account 账号名】（2026-07-15 移除）：生成层是纯内容生成器，它不知道、也不该知道
+// 当前用户连了哪些账号。曾经这里写死 `X: "@northstar_ai"`、`Instagram: "@northstar.ai"` 这类示例名，
+// 后果是【用户看到的是编造的假账号】——即便他真实授权的是 @ChenR292518。
+// 现在 account 由前端 store 从真实已连接账号解析（见 store 的 resolveVariantAccount），
+// 生成层一律留空，绝不编造身份。
 export interface PlatformVariantDefaults {
-  account: string
-  accountType: "manual" | "connected"
   format: string
   media: string
 }
 export const PLATFORM_VARIANT_DEFAULTS: Record<Platform, PlatformVariantDefaults> = {
-  TikTok: { account: "Manual paste account", accountType: "manual", format: "Cover 9:16", media: "Cover image" },
-  Instagram: { account: "@northstar.ai", accountType: "connected", format: "Feed 1:1", media: "Generated image" },
-  YouTube: { account: "Northstar AI", accountType: "manual", format: "Thumbnail 16:9", media: "Thumbnail" },
-  X: { account: "@northstar_ai", accountType: "connected", format: "Landscape 16:9", media: "Generated image" },
-  Reddit: { account: "u/northstar_team", accountType: "manual", format: "Text post · No media", media: "No media" },
-  Facebook: { account: "Northstar AI Page", accountType: "connected", format: "Landscape 1.91:1", media: "Generated image" },
+  TikTok: { format: "Cover 9:16", media: "Cover image" },
+  Instagram: { format: "Feed 1:1", media: "Generated image" },
+  YouTube: { format: "Thumbnail 16:9", media: "Thumbnail" },
+  X: { format: "Landscape 16:9", media: "Generated image" },
+  Reddit: { format: "Text post · No media", media: "No media" },
+  Facebook: { format: "Landscape 1.91:1", media: "Generated image" },
 }
 
 // 每平台正文模板（复刻前端 store 的 COPY_BODY，用 BrandContext 取代 BrandProfile）。
@@ -66,8 +70,10 @@ export function buildStubVariant(platform: Platform, topic: string, brand: Brand
   const cta = brand.defaultCta || "Start your free trial"
   return {
     platform,
-    account: d.account,
-    accountType: d.accountType,
+    // 账号身份留空：生成层不知道用户连了哪些账号，绝不编造（曾经这里填 "@northstar_ai" 这类假名）。
+    // 前端 store 收到变体后用真实已连接账号回填（resolveVariantAccount）。
+    account: "",
+    accountType: undefined,
     hook: safeTopic,
     body: COPY_BODY[platform](safeTopic, brand, cta),
     hashtags: brand.hashtags ?? "",
@@ -76,7 +82,8 @@ export function buildStubVariant(platform: Platform, topic: string, brand: Brand
     format: d.format,
     mediaAsset: d.media,
     publishMode: mode,
-    state: mode === "manual" ? "Manual fallback" : "Valid",
+    // 非 auto 平台 = 该平台不支持自动发布（历史上的手动兜底状态已整套移除）。
+    state: mode === "manual" ? "Unsupported" : "Valid",
     suggestedTime: "10:00",
   }
 }
