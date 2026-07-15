@@ -8,6 +8,7 @@ import type { AppEnv } from "../auth"
 import { currentWorkspace, projectInWorkspace } from "./helpers"
 import { getPublishingService } from "../services/publishing"
 import { getContainer } from "../container"
+import { resolveMediaUrl } from "../services/media-url"
 
 export const publishRoutes = new Hono<AppEnv>()
 
@@ -39,12 +40,30 @@ publishRoutes.post("/", async (c) => {
     return c.json({ error: "not_found", message: `账号 ${alien.target.accountId} 不存在或不属于你` }, 404)
   }
 
+  // ⚠️ 媒体 url 必须先解析成后端够得着的绝对地址（2026-07-15 线上故障修复）：
+  // 前端给的是【浏览器视角】的相对路径 "/social/media/x"（同源、免跨域），
+  // 而发布层要 fetch 它把图取回来传给 X —— Node 的 fetch 不吃相对路径，
+  // 直接抛 "Failed to parse URL"，用户看到的就是"发布失败"（用户的「篮球」帖即此因）。
+  const cfg = getContainer().config
+  const items = body.items.map((it) => ({
+    ...it,
+    content: it.content.media?.length
+      ? {
+          ...it.content,
+          media: it.content.media.map((m) => ({
+            ...m,
+            url: m.url ? resolveMediaUrl(m.url, cfg.publicBaseUrl, cfg.port) : m.url,
+          })),
+        }
+      : it.content,
+  }))
+
   const req: PublishRequest = {
     userId,
     workspaceId: workspace.id,
     projectId: body.projectId,
     postId: body.postId,
-    items: body.items,
+    items,
   }
   const result = await getPublishingService().publishBatch(req)
 
