@@ -72,7 +72,24 @@ async function mapXError(res: Response, action: string): Promise<PublisherError>
   if (res.status === 403 && /duplicate content/i.test(bodyText)) {
     return new PublisherError("content_invalid", "内容重复：X 不允许发布与近期完全相同的推文，请修改文案后再发")
   }
-  if (res.status === 429) return new PublisherError("rate_limited", `X 触发限流（429）：${bodyText}`)
+  if (res.status === 429) {
+    // X 用【同一个 429】表达两件性质完全不同的事，必须分开（2026-07-15 用户提出）：
+    //  ① 月度额度耗尽：{"title":"UsageCapExceeded","period":"Monthly","scope":"Product",
+    //     "detail":"Usage cap exceeded: Monthly product cap",
+    //     "type":"https://api.twitter.com/2/problems/usage-capped"}
+    //     → 这是【我方开发者账号】的配额用完了，等多久都没用，必须升级套餐/等下月重置。
+    //  ② 短时限流（15 分钟窗口打满）→ 等几分钟重试确实有用。
+    // 从前一律报"触发限流，稍后重试"——在①的情况下是让用户白等，纯误导。
+    if (/UsageCapExceeded|usage-capped|usage cap exceeded/i.test(bodyText)) {
+      const monthly = /monthly/i.test(bodyText)
+      return new PublisherError(
+        "quota_exceeded",
+        `X 开发者账号的${monthly ? "【月度】" : ""}发帖额度已用完，无法再发（这是我方 API 套餐的配额，不是你账号的问题）。` +
+          `等待重试无效——需要升级 X 开发者套餐，或等下个计费周期重置。原文：${bodyText}`,
+      )
+    }
+    return new PublisherError("rate_limited", `X 触发短时限流（429），请过几分钟再试：${bodyText}`)
+  }
   if (res.status === 401) return new PublisherError("token_expired", `X 授权失效，请重新连接账号（401）：${bodyText}`)
   if (res.status === 403) {
     // 「not permitted to perform this action」是个笼统的 403，实测有多种成因，按概率排序给出：
@@ -102,7 +119,16 @@ async function mapArticleError(res: Response): Promise<PublisherError> {
         : `X Article 权限不足（403）：${bodyText}`,
     )
   }
-  if (res.status === 429) return new PublisherError("rate_limited", `X Article 触发限流（429）：${bodyText}`)
+  if (res.status === 429) {
+    // 同 mapXError：Article 端点也用 429 表达"额度耗尽"与"短时限流"两件事，必须分开。
+    if (/UsageCapExceeded|usage-capped|usage cap exceeded/i.test(bodyText)) {
+      return new PublisherError(
+        "quota_exceeded",
+        `X 开发者账号的发帖额度已用完（我方 API 套餐配额，非你账号问题）。等待无效，需升级套餐或等下月重置：${bodyText}`,
+      )
+    }
+    return new PublisherError("rate_limited", `X Article 触发短时限流（429），请过几分钟再试：${bodyText}`)
+  }
   if (res.status === 401) return new PublisherError("token_expired", `X 授权失效，请重新连接账号（401）：${bodyText}`)
   return new PublisherError("provider_error", `X Article 失败 ${res.status}：${bodyText}`)
 }

@@ -48,7 +48,7 @@ export { AUTO_PLATFORMS, platformPublishMode }
 export interface PublishOutcome {
   postTitle: string
   links: { platform: Platform; url?: string; remoteId: string }[]
-  failed: { platform: Platform; message: string }[]
+  failed: { platform: Platform; message: string; code?: string }[]
 }
 
 export type AgentTab = "Home" | "Content Create" | "Calendar" | "Operations Data"
@@ -1178,7 +1178,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
           links: res.results
             .filter((r): r is Extract<typeof r, { outcome: "published" }> => r.outcome === "published")
             .map((r) => ({ platform: r.platform, url: r.remoteUrl, remoteId: r.remoteId })),
-          failed: failed.map((f) => ({ platform: f.platform, message: f.message })),
+          failed: failed.map((f) => ({ platform: f.platform, message: f.message, code: f.code })),
         })
         if (failed.length > 0) {
           pushToast(translate(`Publish failed: ${failureReason}`, `发布失败：${failureReason}`), "warn")

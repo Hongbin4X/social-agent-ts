@@ -11,6 +11,7 @@ import {
   xWeightedLength,
   planXTweets,
   composeCtaLine,
+  postTweet,
 } from "../src"
 import type { PublishItem, PublishRequest } from "@social/shared"
 
@@ -362,5 +363,45 @@ describe("composeCtaLine（CTA 的真实形态）", () => {
   it("都没有 → 空串（调用方据此跳过，不拼出个孤零零的冒号）", () => {
     expect(composeCtaLine(undefined, undefined)).toBe("")
     expect(composeCtaLine("", "  ")).toBe("")
+  })
+})
+
+// 429 的两种含义必须分开 —— 用户 2026-07-15 提出：
+// 「如果是开发者后台余额不足导致的发帖失败，也需要在前端提示中体现出来」。
+// X 用【同一个 429】表达两件性质天差地别的事，此前一律报"触发限流，稍后重试"：
+//   · 额度耗尽 → 等多久都没用，必须升级套餐/等下月重置。报"稍后重试"是让用户白等。
+//   · 短时限流 → 等几分钟确实有用。
+// 错误特征取自 X 官方：{"title":"UsageCapExceeded","detail":"Usage cap exceeded: Monthly product cap",
+//                      "type":"https://api.twitter.com/2/problems/usage-capped"}
+describe("X 429：额度耗尽 vs 短时限流", () => {
+  const fetch429 = (body: unknown) =>
+    (async () => new Response(JSON.stringify(body), { status: 429 })) as unknown as typeof fetch
+
+  it("月度额度耗尽 → quota_exceeded（不是 rate_limited），提示说明是【我方套餐】配额、重试无效", async () => {
+    const err = await postTweet({
+      accessToken: "t",
+      text: "hi",
+      fetchImpl: fetch429({
+        title: "UsageCapExceeded",
+        period: "Monthly",
+        scope: "Product",
+        detail: "Usage cap exceeded: Monthly product cap",
+        type: "https://api.twitter.com/2/problems/usage-capped",
+      }),
+    }).catch((e) => e)
+    expect(err.code).toBe("quota_exceeded")
+    expect(err.message).toContain("额度已用完")
+    expect(err.message).toContain("等待重试无效") // 不能给"稍后重试"这种误导性建议
+    expect(err.message).toContain("不是你账号的问题") // 也不是用户自己的号出了问题
+  })
+
+  it("短时限流 → rate_limited，明确建议过几分钟再试", async () => {
+    const err = await postTweet({
+      accessToken: "t",
+      text: "hi",
+      fetchImpl: fetch429({ title: "Too Many Requests", detail: "Too Many Requests" }),
+    }).catch((e) => e)
+    expect(err.code).toBe("rate_limited")
+    expect(err.message).toContain("过几分钟再试")
   })
 })

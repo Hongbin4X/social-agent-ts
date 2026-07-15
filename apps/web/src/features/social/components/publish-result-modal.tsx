@@ -91,10 +91,20 @@ export function PublishResultModal({ result, onClose }: { result: PublishOutcome
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 text-sm font-medium text-status-failed">
                 <TriangleAlert className="size-3.5" />
-                {t("Failed", "发布失败")}
+                {f.code === "quota_exceeded" ? t("API quota exhausted", "API 额度已用完") : t("Failed", "发布失败")}
               </div>
               {/* 如实透传平台原话，不美化成"稍后重试"——用户需要知道到底为什么失败。 */}
               <p className="mt-0.5 text-xs text-status-failed">{f.message}</p>
+              {/* 额度耗尽要单独说清：这【不是用户的内容或账号有问题】，是我方 X 开发者套餐的配额用完了。
+                  不说清的话，用户会反复改文案重试——而那一百次都不会成功。 */}
+              {f.code === "quota_exceeded" ? (
+                <p className="mt-1.5 rounded-md bg-[oklch(0.97_0.03_70)] px-2 py-1 text-[11px] text-[oklch(0.48_0.13_55)]">
+                  {t(
+                    "This is our API plan's quota, not your account. Retrying or editing the copy won't help — the plan needs an upgrade or a new billing cycle. Please contact support.",
+                    "这是我们 API 套餐的配额限制，与你的账号和文案无关。重试或改文案都不会成功——需要升级套餐或等下个计费周期。请联系支持。",
+                  )}
+                </p>
+              ) : null}
             </div>
           </div>
         ))}

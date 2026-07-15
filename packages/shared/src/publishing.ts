@@ -139,7 +139,16 @@ export type PublishErrorCode =
   | "unsupported_platform" // 没有对应 adapter
   | "unsupported_media" // 媒体类型该平台 P0 不支持（如视频）
   | "content_invalid" // 文案超限/为空等
-  | "rate_limited" // 触发平台限流
+  | "rate_limited" // 触发平台【短时】限流（15 分钟窗口打满）——等几分钟重试确实有用
+  /**
+   * 开发者账号的【额度/配额耗尽】（如 X 开发者套餐的月度发帖上限）。
+   *
+   * ⚠️ 必须与 rate_limited 区分（2026-07-15）：两者 X 都返 429，但性质天差地别——
+   * 短时限流等几分钟就好；额度耗尽【等多久都没用】，只能升级套餐或等下月重置。
+   * 混成一个"稍后重试"是在误导用户白等（此前就是这么干的）。
+   * 这也不是用户自己的账号出了问题，是【我方开发者账号】的配额——提示要说清，别让用户去查自己的号。
+   */
+  | "quota_exceeded"
   | "provider_error" // 平台/聚合服务返回错误
   | "not_configured" // 本地缺少该平台的 API 配置（联调前的正常状态）
 
