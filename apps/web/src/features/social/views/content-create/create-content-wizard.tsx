@@ -34,6 +34,7 @@ import {
 import { PreviewCard } from "./preview-card"
 import { ImageSlotPanel } from "./image-slot-panel"
 import { DAYS, FORMAT_PRESETS, MEDIA_OPTIONS, STATE_META, copyTypeLabel, deriveMode, deriveState } from "./helpers"
+import { defaultScheduleAt } from "@/features/social/lib/schedule-time"
 
 /* ---------- step-by-step create wizard ---------- */
 const WIZARD_STEPS = ["Draft", "Customize per network", "Schedule"] as const
@@ -87,8 +88,10 @@ export function CreatePostWizard({
   const [showBatch, setShowBatch] = useState(false)
   const [ctaPreview, setCtaPreview] = useState<string | null>(null)
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now")
-  const [calDate, setCalDate] = useState(DAYS[2])
-  const [calTime, setCalTime] = useState("09:00")
+  // 排期表单默认值 = 【当前时间 + 10 分钟】（用户 2026-07-15 需求）。
+  // 曾经写死 DAYS[2]（本周三）+ "09:00"，用户不改就永远排到那个时刻。
+  const [calDate, setCalDate] = useState(() => defaultScheduleAt().date)
+  const [calTime, setCalTime] = useState(() => defaultScheduleAt().time)
 
   useEffect(() => {
     if (open) {
@@ -112,7 +115,9 @@ export function CreatePostWizard({
 
   const variants = studio.variants
   const current = variants.find((v) => v.platform === activeVariant) ?? variants[0] ?? null
-  const hasSchedulable = variants.some((v) => v.state === "Valid" || v.state === "Manual fallback")
+  // 可排期 = 有内容可发的变体。曾经含一个"手动兜底"状态（已整套移除）；
+  // "Unsupported"（平台不支持自动发布）仍可排期——排期本身是日历提醒，不等于能自动发。
+  const hasSchedulable = variants.some((v) => v.state === "Valid" || v.state === "Unsupported")
 
   const togglePlatform = (p: Platform) =>
     setStudioPlatforms(studio.platforms.includes(p) ? studio.platforms.filter((x) => x !== p) : [...studio.platforms, p])
@@ -122,13 +127,21 @@ export function CreatePostWizard({
     else pushToast(t("This is a mock CTA preview. Add a destination URL in Brand Profile to make it actionable.", "这是模拟的 CTA 预览。在品牌档案里填写目标链接即可让它真正可点。"), "warn")
   }
 
+  /**
+   * 可选账号 —— 只列【真实已授权】的账号（status==="Connected"）。
+   *
+   * 曾经这里做了两件很坏的事（2026-07-15 移除）：
+   *  1. 不过滤 status —— Expired/NotConnected/PermissionMissing 的账号也进选项，用户选了才发现发不出去；
+   *  2. `if (!opts.some(o => o.name === current.account)) opts.unshift({ name: current.account, ... })`
+   *     —— 把变体上那个【编造的示例账号名】(@northstar_ai) 主动注入到选项首位并成为默认选中值。
+   *     这就是假账号一路走到发布环节的通道。
+   * 现在：没有已授权账号就是空列表，UI 如实引导去账号中心授权，绝不造一个能选的假身份。
+   */
   const accountOptions = useMemo(() => {
     if (!current) return [] as { name: string; type: "manual" | "connected" }[]
-    const platformAccts = accounts.filter((a) => a.platform === current.platform).map((a) => ({ name: a.name, type: a.type }))
-    const opts = [...platformAccts]
-    if (!opts.some((o) => o.type === "manual")) opts.push({ name: "Manual paste account", type: "manual" })
-    if (!opts.some((o) => o.name === current.account)) opts.unshift({ name: current.account, type: current.accountType ?? "manual" })
-    return opts
+    return accounts
+      .filter((a) => a.platform === current.platform && a.status === "Connected")
+      .map((a) => ({ name: a.name, type: a.type }))
   }, [accounts, current])
 
   const applyEdit = (patch: Partial<PostVariant>) => {
@@ -335,19 +348,29 @@ export function CreatePostWizard({
 
                     <div className="grid grid-cols-2 gap-3">
                       <Field label={t("Account", "账号")}>
-                        <Select
-                          value={current.account}
-                          onChange={(e) => {
-                            const opt = accountOptions.find((o) => o.name === e.target.value)
-                            applyEdit({ account: e.target.value, accountType: opt?.type ?? "manual" })
-                          }}
-                        >
-                          {accountOptions.map((o) => (
-                            <option key={o.name} value={o.name}>
-                              {o.name} {o.type === "connected" ? t("· connected", "· 已连接") : t("· manual", "· 手动")}
-                            </option>
-                          ))}
-                        </Select>
+                        {accountOptions.length === 0 ? (
+                          // 该平台没有已授权账号：如实说，不给一个能选的假身份（曾经这里会注入 @northstar_ai）。
+                          <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                            {t(
+                              `No authorized ${current.platform} account — authorize one to publish.`,
+                              `没有已授权的 ${current.platform} 账号，需先授权才能发布。`,
+                            )}
+                          </div>
+                        ) : (
+                          <Select
+                            value={current.account}
+                            onChange={(e) => {
+                              const opt = accountOptions.find((o) => o.name === e.target.value)
+                              applyEdit({ account: e.target.value, accountType: opt?.type ?? "manual" })
+                            }}
+                          >
+                            {accountOptions.map((o) => (
+                              <option key={o.name} value={o.name}>
+                                {o.name} {o.type === "connected" ? t("· connected", "· 已连接") : t("· manual", "· 手动")}
+                              </option>
+                            ))}
+                          </Select>
+                        )}
                         {/* 直达账号中心：授权新账号 / 断开授权都在那里，避免用户在发布流程里找不到入口。 */}
                         <button
                           type="button"
@@ -567,7 +590,7 @@ export function CreatePostWizard({
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  {t("Auto platforms publish immediately; manual platforms appear as a manual fallback for you to post.", "自动平台会立即发布；手动平台会进入手动兜底，供你自行发布。")}
+                  {t("Publishes immediately to platforms with an authorized account. Platforms without one are skipped.", "会立即发布到已授权账号的平台；没有已授权账号的平台会被跳过。")}
                 </p>
               )}
             </div>

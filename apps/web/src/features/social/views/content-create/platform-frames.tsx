@@ -9,7 +9,10 @@
 // 配图/比例复用 helpers.ratioOf 与 preview-card 已有的「真图 or 占位」逻辑，保持一致。
 
 import type { Platform, PostVariant } from "@social/shared"
-import { stripImageTokens } from "@social/shared"
+import { planXTweets, splitBodyByImageTokens, stripImageTokens, X_TWEET_MAX, xWeightedLength } from "@social/shared"
+// 取图口径的唯一真源在 store —— 发布时送的就是它返回的这批图。
+// 预览与发布共用同一个函数，杜绝"两份实现慢慢漂移"导致的预览失真。
+import { variantFullText, variantImageUrls } from "@/features/social/store"
 import { useLang } from "@/features/social/i18n"
 import { cn } from "@/lib/utils"
 import { ratioOf } from "./helpers"
@@ -33,9 +36,12 @@ import {
 
 /* ---------- 小工具：账号名 / 头像 / 配图 ---------- */
 
-// account 里存的是形如 "@northstar_ai" 的 handle；展示名去掉 @，handle 保证带 @。
-const handleOf = (a?: string) => (a && a.startsWith("@") ? a : `@${(a ?? "account").replace(/^@/, "")}`)
-const nameOf = (a?: string) => (a ?? "account").replace(/^@/, "")
+// account 存的是真实已授权账号的显示名（如 "@ChenR292518"）；展示名去掉 @，handle 保证带 @。
+// 空 = 该平台没有已授权账号（见 store 的 resolveVariantAccount）——如实显示「未绑定账号」，
+// 不要退回一个看起来像账号名的字面量，那正是从前 @northstar_ai 骗过所有人的方式。
+const NO_ACCOUNT = "未绑定账号"
+const handleOf = (a?: string) => (!a ? NO_ACCOUNT : a.startsWith("@") ? a : `@${a.replace(/^@/, "")}`)
+const nameOf = (a?: string) => (!a ? NO_ACCOUNT : a.replace(/^@/, ""))
 
 // 头像占位：没有真实头像，用账号首字母 + 品牌色块。square 用于 YouTube 频道图之外的场景可切圆/方。
 function Avatar({ name, className, square = false }: { name?: string; className?: string; square?: boolean }) {
@@ -57,6 +63,25 @@ function Avatar({ name, className, square = false }: { name?: string; className?
 // forceRatio 让个别平台强制固定比例（如 YouTube 缩略图恒 16:9）；缺省走 variant.format 推导。
 // FIX 1（内容库预览隐藏配图槽真图）：image 模式生成的帖子，真图落在 variant.imageSlots[].url（status "ready"），
 // 从不写回 variant.mediaUrl——旧逻辑只认 mediaUrl，会把已出图的帖子误判成"无媒体"从而不渲染/显示占位。
+/** 多图画廊：X 上 1/2/3/4 张图的排布。 */
+function XMediaGrid({ urls }: { urls: string[] }) {
+  if (urls.length === 0) return null
+  const grid = urls.length === 1 ? "grid-cols-1" : "grid-cols-2"
+  return (
+    <div className={cn("mt-3 grid gap-0.5 overflow-hidden rounded-2xl border border-border", grid)}>
+      {urls.slice(0, 4).map((u, i) => (
+        // eslint-disable-next-line @next/next/no-img-element -- 预览用真实 URL，无需 Next 图片优化（已 unoptimized）
+        <img
+          key={i}
+          src={u}
+          alt=""
+          className={cn("w-full object-cover", urls.length === 3 && i === 0 ? "row-span-2 h-full" : "aspect-video")}
+        />
+      ))}
+    </div>
+  )
+}
+
 function FrameMedia({
   variant,
   rounded = "rounded-lg",
@@ -149,31 +174,157 @@ function Card({ dark = false, className, children }: { dark?: boolean; className
 }
 
 /* ---------- X（Twitter）：推文流 ---------- */
+/**
+ * X 预览 —— 【跟随用户选的发帖形态真实渲染】（2026-07-15 用户需求）。
+ * 此前无论选普通推/串推/Article，右边永远画一条推文，用户看不出串推会被切成几条。
+ *
+ * 关键：串推分段用的是 @social/shared 的 splitIntoThreadSegments —— 和发布层【同一个函数】。
+ * 所以"预览几条"就是"实际发几条"，不会出现预览 3 条、实际发 5 条的偏差。
+ */
 function XFrame({ variant }: { variant: PostVariant }) {
+  const postType = variant.xPostType ?? "tweet"
+  if (postType === "article") return <XArticleFrame variant={variant} />
+  return <XTweetSequence variant={variant} mode={postType === "thread" ? "thread" : "tweet"} />
+}
+
+/**
+ * 推文序列渲染 —— 普通推与串推共用。
+ * 条数/配图分配全部来自 planXTweets（与发布层同一份规划），所以预览就是实际会发出去的样子。
+ */
+function XTweetSequence({ variant, mode }: { variant: PostVariant; mode: "tweet" | "thread" }) {
+  const { t } = useLang()
+  const planned = planXTweets(variantFullText(variant), variantImageUrls(variant), mode)
+  if (planned.length === 0) {
+    return (
+      <Card>
+        <p className="p-4 text-sm text-muted-foreground">{t("No copy yet.", "尚无文案。")}</p>
+      </Card>
+    )
+  }
+  const multi = planned.length > 1
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* 一眼看出会发成几条——这是用户最关心的"真实效果"。 */}
+      {multi ? (
+        <p className="text-xs font-medium text-muted-foreground">
+          {mode === "thread"
+            ? t(`Thread · ${planned.length} tweets`, `串推 · 1 条 + ${planned.length - 1} 条回复`)
+            : t(`${planned.length} tweets (4-image limit per tweet)`, `将发 ${planned.length} 条（单条最多 4 张图）`)}
+        </p>
+      ) : null}
+      {planned.map((tw, i) => {
+        const w = xWeightedLength(tw.text)
+        return (
+          <Card key={i}>
+            <div className="flex gap-3 p-4">
+              <div className="flex flex-col items-center">
+                <Avatar name={variant.account} className="h-10 w-10 text-sm" />
+                {/* 串起来的竖线：视觉上体现"这几条是一串"，和 X 上的真实观感一致。 */}
+                {multi && i < planned.length - 1 ? <div className="mt-1 w-px flex-1 bg-border" /> : null}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1 text-sm">
+                  <span className="font-semibold text-foreground">{nameOf(variant.account)}</span>
+                  <span className="truncate text-muted-foreground">{handleOf(variant.account)}{i === 0 ? " · now" : ""}</span>
+                  {multi ? (
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">{i + 1}/{planned.length}</span>
+                  ) : (
+                    <MoreHorizontal className="ml-auto size-4 shrink-0 text-muted-foreground" />
+                  )}
+                </div>
+                {tw.text ? (
+                  <p className="mt-1 whitespace-pre-line text-sm text-foreground/90">{tw.text}</p>
+                ) : (
+                  <p className="mt-1 text-xs italic text-muted-foreground">{t("(images only)", "（仅图片）")}</p>
+                )}
+                {/* 加权长度：中日韩每字算 2，用户很容易以为"才 200 字没超"，其实已 400。 */}
+                {tw.text ? (
+                  <p className={cn("mt-1.5 text-xs", w > X_TWEET_MAX ? "font-medium text-status-failed" : "text-muted-foreground")}>
+                    {w}/{X_TWEET_MAX}
+                    {w > X_TWEET_MAX ? t(" — too long", " 超长") : ""}
+                  </p>
+                ) : null}
+                <XMediaGrid urls={tw.imageUrls} />
+                {i === 0 && !multi ? (
+                  <div className="mt-3 flex items-center justify-between pr-2 text-muted-foreground">
+                    <MessageCircle className={barIcon} />
+                    <Repeat2 className={barIcon} />
+                    <Heart className={barIcon} />
+                    <Eye className={barIcon} />
+                    <Share className={barIcon} />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Article 里的一张内联图：按槽的状态如实呈现（未出图/生成中/失败都不假装有图）。 */
+function ArticleImage({ slot }: { slot?: { status: string; url?: string; description?: string; failureReason?: string } }) {
+  const { t } = useLang()
+  if (slot?.status === "ready" && slot.url) {
+    // eslint-disable-next-line @next/next/no-img-element -- 预览真实 URL，Next 图片优化已关（unoptimized）
+    return <img src={slot.url} alt={slot.description ?? ""} className="w-full rounded-lg border border-border object-cover" />
+  }
+  return (
+    <div className="flex min-h-24 items-center justify-center rounded-lg border border-dashed border-border bg-muted/40 px-3 py-4 text-center text-xs text-muted-foreground">
+      {slot?.status === "generating"
+        ? t("Generating image…", "正在生成配图…")
+        : slot?.status === "failed"
+          ? t(`Image failed: ${slot.failureReason ?? ""}`, `配图生成失败：${slot.failureReason ?? ""}`)
+          : t(slot?.description || "Image slot — not generated yet", slot?.description || "图片槽位 — 尚未生成")}
+    </div>
+  )
+}
+
+/**
+ * Article（长文）预览 —— X Articles 的形态：大标题 + 正文段落，不是推文卡片。
+ * ⚠️ 硬门槛：发帖账号必须是 X Premium 订阅者，否则 X 会 403。预览里如实标出，别让用户白写一篇。
+ */
+function XArticleFrame({ variant }: { variant: PostVariant }) {
+  const { t } = useLang()
+  // 按 [[img:N]] 切成「文本段 / 图片段」的有序序列——图片就渲染在它在正文里的位置。
+  const segments = splitBodyByImageTokens(variant.body ?? "").filter((x) => x.type === "image" || x.text.trim())
+  const slotOf = (ref: number) => (variant.imageSlots ?? []).find((sl) => sl.ref === ref)
   return (
     <Card>
-      <div className="flex gap-3 p-4">
-        <Avatar name={variant.account} className="h-10 w-10 text-sm" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1 text-sm">
-            <span className="font-semibold text-foreground">{nameOf(variant.account)}</span>
-            <span className="truncate text-muted-foreground">{handleOf(variant.account)} · now</span>
-            <MoreHorizontal className="ml-auto size-4 shrink-0 text-muted-foreground" />
-          </div>
-          <BodyText hook={variant.hook} body={variant.body} className="mt-1" />
-          <Extras variant={variant} />
-          <div className="mt-3">
-            <FrameMedia variant={variant} rounded="rounded-2xl border border-border" />
-          </div>
-          {/* X 底部互动条：评论 / 转推 / 点赞 / 查看 / 分享 */}
-          <div className="mt-3 flex items-center justify-between pr-2 text-muted-foreground">
-            <MessageCircle className={barIcon} />
-            <Repeat2 className={barIcon} />
-            <Heart className={barIcon} />
-            <Eye className={barIcon} />
-            <Share className={barIcon} />
-          </div>
+      <div className="p-5">
+        <div className="flex items-center gap-2 text-sm">
+          <Avatar name={variant.account} className="h-8 w-8 text-xs" />
+          <span className="font-semibold text-foreground">{nameOf(variant.account)}</span>
+          <span className="text-muted-foreground">· {t("Article", "长文")}</span>
         </div>
+        <h1 className="mt-3 text-xl font-bold leading-snug text-foreground">
+          {variant.hook || t("Untitled article", "未命名长文")}
+        </h1>
+        {/* 图文相间：按正文里 [[img:N]] 的【实际位置】插图，这才是 Article 的真实排版
+            （用户 2026-07-15："article 类型对应一整篇图文相间的文章的预览形式"）。 */}
+        <div className="mt-3 space-y-3">
+          {segments.length > 0 ? (
+            segments.map((seg, i) =>
+              seg.type === "text" ? (
+                <p key={i} className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">
+                  {seg.text.trim()}
+                </p>
+              ) : (
+                <ArticleImage key={i} slot={slotOf(seg.ref)} />
+              ),
+            )
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("No copy yet.", "尚无文案。")}</p>
+          )}
+        </div>
+        <Extras variant={variant} />
+        <p className="mt-3 rounded-md bg-[oklch(0.97_0.03_70)] px-2.5 py-1.5 text-xs text-[oklch(0.48_0.13_55)]">
+          {t(
+            "X Articles requires a Premium account — publishing will fail (403) otherwise.",
+            "X Articles 需要发帖账号是 Premium 订阅者，否则发布会被 X 拒绝（403）。",
+          )}
+        </p>
       </div>
     </Card>
   )

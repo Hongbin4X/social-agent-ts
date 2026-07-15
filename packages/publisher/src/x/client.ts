@@ -10,6 +10,11 @@
 // 错误一律经 mapXError 映射成 PublisherError（带机器可读 code），绝不吞掉 X 的真实原因（铁律：报错不掩盖）。
 
 import { PublisherError } from "../errors"
+// 加权长度/串推分段是【前后端共用】的纯函数，真源在 @social/shared：
+// 前端预览必须用同一套逻辑，否则会出现"预览 3 条、实际发 5 条"的偏差。
+import { planXTweets, splitIntoThreadSegments, X_TWEET_MAX, xWeightedLength } from "@social/shared"
+// 原地转出：这些历史上就从 x/client 导出，调用方（adapters/x.ts、index.ts、测试）沿用旧路径不改。
+export { planXTweets, splitIntoThreadSegments, X_TWEET_MAX, xWeightedLength }
 
 // tweet 端点 api.twitter.com 已实测可用（master 真发过 tweet）；articles/media 端点在 api.x.com。
 const TWEET_BASE = "https://api.twitter.com"
@@ -57,8 +62,58 @@ export interface PostedTweet {
   url: string
 }
 
-/** X 单条字符上限（发串推自动分段时用）。 */
-export const X_TWEET_MAX = 280
+function tweetUrl(id: string, username?: string): string {
+  return username ? `https://x.com/${username}/status/${id}` : `https://x.com/i/web/status/${id}`
+}
+
+/** 把 X 发推错误映射成 PublisherError（保留真实原因，区分重复内容/限流/授权失效/权限）。 */
+async function mapXError(res: Response, action: string): Promise<PublisherError> {
+  const bodyText = await safeBody(res)
+  if (res.status === 403 && /duplicate content/i.test(bodyText)) {
+    return new PublisherError("content_invalid", "内容重复：X 不允许发布与近期完全相同的推文，请修改文案后再发")
+  }
+  if (res.status === 429) return new PublisherError("rate_limited", `X 触发限流（429）：${bodyText}`)
+  if (res.status === 401) return new PublisherError("token_expired", `X 授权失效，请重新连接账号（401）：${bodyText}`)
+  if (res.status === 403) {
+    // 「not permitted to perform this action」是个笼统的 403，实测有多种成因，按概率排序给出：
+    //  ① 内容被 X 反垃圾/安全过滤器拦下（营销文案 + 多标签 + 推广链接的组合最易中招）——最常见，改文案即可；
+    //  ② App 写权限掉了（X 后台 App permissions 非 Read and write，或改过权限后 token 未重新授权）；
+    //  ③ 账号被 X 限流/限制。
+    // 不再武断归因单一原因（曾误判成 App 权限），把可行动项都列出来。
+    if (/not permitted to perform this action/i.test(bodyText)) {
+      return new PublisherError(
+        "content_invalid",
+        "X 拒绝发帖（403 not permitted）。常见原因(按概率)：① 这条内容被 X 的反垃圾/安全过滤拦下——试着精简文案、减少话题标签、去掉可疑或推广链接后重发；② X 后台该 App 的 permissions 不是「Read and write」，或改过权限后没重新授权；③ 账号被限流。多数情况是①，先改内容试试。",
+      )
+    }
+    return new PublisherError("permission_missing", `X 权限不足（403）：${bodyText}`)
+  }
+  return new PublisherError("provider_error", `X ${action}失败 ${res.status}：${bodyText}`)
+}
+
+/** Article 端点错误映射：403 大概率是账号未开通 Premium，给明确可行动的提示。 */
+async function mapArticleError(res: Response): Promise<PublisherError> {
+  const bodyText = await safeBody(res)
+  if (res.status === 403) {
+    return new PublisherError(
+      "permission_missing",
+      /premium/i.test(bodyText)
+        ? "发布 X Article 需要发帖账号开通 X Premium 订阅，当前账号未开通。请改用「普通推文 / 串推」，或为该账号开通 Premium 后再发。"
+        : `X Article 权限不足（403）：${bodyText}`,
+    )
+  }
+  if (res.status === 429) return new PublisherError("rate_limited", `X Article 触发限流（429）：${bodyText}`)
+  if (res.status === 401) return new PublisherError("token_expired", `X 授权失效，请重新连接账号（401）：${bodyText}`)
+  return new PublisherError("provider_error", `X Article 失败 ${res.status}：${bodyText}`)
+}
+
+async function safeBody(res: Response): Promise<string> {
+  try {
+    return (await res.text()).slice(0, 300)
+  } catch {
+    return "<no body>"
+  }
+}
 
 export interface PostTweetParams {
   accessToken: string
@@ -118,9 +173,14 @@ export interface PostedThread {
 export async function postThread(params: PostThreadParams): Promise<PostedThread> {
   const segs = params.segments.map((s) => s.trim()).filter((s) => s.length > 0)
   if (segs.length === 0) throw new PublisherError("content_invalid", "串推内容为空")
-  const overflow = segs.find((s) => s.length > X_TWEET_MAX)
+  // ⚠️ 用加权长度判超限，不是 .length：X 对汉字按 2 计（见 xWeightedLength）。
+  // 用 .length 会双向出错：中文合法内容被误拒、中文超限内容被放行然后被 X 拒。
+  const overflow = segs.find((s) => xWeightedLength(s) > X_TWEET_MAX)
   if (overflow) {
-    throw new PublisherError("content_invalid", `串推某条 ${overflow.length} 字超过单条上限 ${X_TWEET_MAX}`)
+    throw new PublisherError(
+      "content_invalid",
+      `串推某条加权长度 ${xWeightedLength(overflow)} 超过单条上限 ${X_TWEET_MAX}（中日韩字符每个算 2）`,
+    )
   }
 
   const ids: string[] = []
@@ -219,93 +279,3 @@ export async function postArticle(params: PostArticleParams): Promise<PostedArti
 
 // ── 分段/工具 ─────────────────────────────────────────────────────────────────
 
-/**
- * 把一段正文自动切成 ≤maxLen 的串推分段。
- * 优先按段落（空行）切；单段仍超长再按句子/空格切；避免硬切单词。
- */
-export function splitIntoThreadSegments(text: string, maxLen = X_TWEET_MAX): string[] {
-  const clean = (text ?? "").trim()
-  if (!clean) return []
-  const out: string[] = []
-  for (const para of clean.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)) {
-    if (para.length <= maxLen) {
-      out.push(para)
-      continue
-    }
-    // 段落超长：按句末/空格滚动拼，尽量不硬切词。
-    let buf = ""
-    for (const word of para.split(/\s+/)) {
-      if (word.length > maxLen) {
-        // 单个超长 token（如长 URL）：先冲掉 buf，再硬切它。
-        if (buf) {
-          out.push(buf)
-          buf = ""
-        }
-        for (let i = 0; i < word.length; i += maxLen) out.push(word.slice(i, i + maxLen))
-        continue
-      }
-      const next = buf ? `${buf} ${word}` : word
-      if (next.length > maxLen) {
-        out.push(buf)
-        buf = word
-      } else {
-        buf = next
-      }
-    }
-    if (buf) out.push(buf)
-  }
-  return out
-}
-
-function tweetUrl(id: string, username?: string): string {
-  return username ? `https://x.com/${username}/status/${id}` : `https://x.com/i/web/status/${id}`
-}
-
-/** 把 X 发推错误映射成 PublisherError（保留真实原因，区分重复内容/限流/授权失效/权限）。 */
-async function mapXError(res: Response, action: string): Promise<PublisherError> {
-  const bodyText = await safeBody(res)
-  if (res.status === 403 && /duplicate content/i.test(bodyText)) {
-    return new PublisherError("content_invalid", "内容重复：X 不允许发布与近期完全相同的推文，请修改文案后再发")
-  }
-  if (res.status === 429) return new PublisherError("rate_limited", `X 触发限流（429）：${bodyText}`)
-  if (res.status === 401) return new PublisherError("token_expired", `X 授权失效，请重新连接账号（401）：${bodyText}`)
-  if (res.status === 403) {
-    // 「not permitted to perform this action」是个笼统的 403，实测有多种成因，按概率排序给出：
-    //  ① 内容被 X 反垃圾/安全过滤器拦下（营销文案 + 多标签 + 推广链接的组合最易中招）——最常见，改文案即可；
-    //  ② App 写权限掉了（X 后台 App permissions 非 Read and write，或改过权限后 token 未重新授权）；
-    //  ③ 账号被 X 限流/限制。
-    // 不再武断归因单一原因（曾误判成 App 权限），把可行动项都列出来。
-    if (/not permitted to perform this action/i.test(bodyText)) {
-      return new PublisherError(
-        "content_invalid",
-        "X 拒绝发帖（403 not permitted）。常见原因(按概率)：① 这条内容被 X 的反垃圾/安全过滤拦下——试着精简文案、减少话题标签、去掉可疑或推广链接后重发；② X 后台该 App 的 permissions 不是「Read and write」，或改过权限后没重新授权；③ 账号被限流。多数情况是①，先改内容试试。",
-      )
-    }
-    return new PublisherError("permission_missing", `X 权限不足（403）：${bodyText}`)
-  }
-  return new PublisherError("provider_error", `X ${action}失败 ${res.status}：${bodyText}`)
-}
-
-/** Article 端点错误映射：403 大概率是账号未开通 Premium，给明确可行动的提示。 */
-async function mapArticleError(res: Response): Promise<PublisherError> {
-  const bodyText = await safeBody(res)
-  if (res.status === 403) {
-    return new PublisherError(
-      "permission_missing",
-      /premium/i.test(bodyText)
-        ? "发布 X Article 需要发帖账号开通 X Premium 订阅，当前账号未开通。请改用「普通推文 / 串推」，或为该账号开通 Premium 后再发。"
-        : `X Article 权限不足（403）：${bodyText}`,
-    )
-  }
-  if (res.status === 429) return new PublisherError("rate_limited", `X Article 触发限流（429）：${bodyText}`)
-  if (res.status === 401) return new PublisherError("token_expired", `X 授权失效，请重新连接账号（401）：${bodyText}`)
-  return new PublisherError("provider_error", `X Article 失败 ${res.status}：${bodyText}`)
-}
-
-async function safeBody(res: Response): Promise<string> {
-  try {
-    return (await res.text()).slice(0, 300)
-  } catch {
-    return "<no body>"
-  }
-}

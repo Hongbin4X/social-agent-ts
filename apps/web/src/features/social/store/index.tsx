@@ -23,8 +23,10 @@ import {
 import { api } from "@/features/social/data/api"
 // store 非组件、用不了 useLang hook，toast 文案用模块级 translate(en,zh)（读当前语言，一次性取值）。
 import { translate } from "@/features/social/i18n"
+import { defaultScheduleAt } from "@/features/social/lib/schedule-time"
 import type {
   Account,
+  AccountType,
   BrandProfile,
   CalendarItem,
   ContentGoal,
@@ -39,8 +41,15 @@ import type {
 } from "@social/shared"
 // 平台自动发布能力的唯一真源在 @social/shared（后端也复用同一份）。这里 import 后再 re-export，
 // 让原型里所有「从 store 引 AUTO_PLATFORMS / platformPublishMode」的调用方零改动。
-import { AUTO_PLATFORMS, platformPublishMode, stripImageTokens } from "@social/shared"
+import { AUTO_PLATFORMS, platformPublishMode, splitBodyByImageTokens, stripImageTokens } from "@social/shared"
 export { AUTO_PLATFORMS, platformPublishMode }
+
+/** 一次发布的结果摘要：给「发布成功」弹窗用，带平台侧真实链接。 */
+export interface PublishOutcome {
+  postTitle: string
+  links: { platform: Platform; url?: string; remoteId: string }[]
+  failed: { platform: Platform; message: string }[]
+}
 
 export type AgentTab = "Home" | "Content Create" | "Calendar" | "Operations Data"
 export type AgentSecondary = "brand" | "accounts" | null
@@ -131,28 +140,34 @@ interface Store {
 
   posts: SocialPost[]
   saveStudioToLibrary: () => Promise<SocialPost | null>
-  markManuallyPublished: (postId: string) => void
   retryFailed: (postId: string) => void
-  archivePost: (postId: string) => void
   // 硬删除草稿（不可恢复；UI 侧已限定作用面并二次确认）。
   deletePost: (postId: string) => void
 
   // 真实发布一条帖子到平台（调发布层）。返回各 outcome 计数；无可发布项/出错返回 null。
-  publishPostNow: (post: SocialPost) => Promise<{ published: number; failed: number; manual: number } | null>
+  publishPostNow: (post: SocialPost) => Promise<{ published: number; failed: number } | null>
+  /**
+   * 最近一次发布的结果（含平台侧帖子链接）——供「发布成功」弹窗展示。
+   * 为什么要留着：发布成功后用户最想要的就是"发到哪了、点开看看"。
+   * 此前 remoteUrl 一路从 X API 传回后端、传到前端，然后【被丢掉】，只弹一句"已发布到 1 个平台"。
+   */
+  publishResult: PublishOutcome | null
+  dismissPublishResult: () => void
 
   calendar: CalendarItem[]
   addStudioToCalendar: (date?: string, time?: string) => void
-  schedulePost: (post: SocialPost) => void
+  schedulePost: (post: SocialPost, date?: string, time?: string) => void
   rescheduleCalendarItem: (id: string, date: string, time: string) => void
   cancelCalendarItem: (id: string) => void
   publishCalendarItemNow: (id: string) => void
-  convertCalendarItemToManual: (id: string) => void
 
   accounts: Account[]
   addManualAccount: (a: Omit<Account, "id" | "status" | "type">) => void
   connectAccount: (platform: Platform) => void
   disconnectAccount: (id: string) => void
   refreshAccount: (id: string) => void
+  /** 彻底删除账号行（≠断开连接：那只清 token、行仍在列表）。 */
+  deleteAccount: (id: string) => void
 
   suggestions: Recommendation[]
   suggestionsGenerated: boolean
@@ -168,16 +183,82 @@ const Ctx = createContext<Store | null>(null)
 let idc = 1000
 const nextId = (p: string) => `${p}_${++idc}`
 
-const VARIANT_DEFAULTS: Record<
-  Platform,
-  { account: string; accountType: "manual" | "connected"; format: string; media: string }
-> = {
-  TikTok: { account: "Manual paste account", accountType: "manual", format: "Cover 9:16", media: "Cover image" },
-  Instagram: { account: "@northstar.ai", accountType: "connected", format: "Feed 1:1", media: "Generated image" },
-  YouTube: { account: "Northstar AI", accountType: "manual", format: "Thumbnail 16:9", media: "Thumbnail" },
-  X: { account: "@northstar_ai", accountType: "connected", format: "Landscape 16:9", media: "Generated image" },
-  Reddit: { account: "u/northstar_team", accountType: "manual", format: "Text post · No media", media: "No media" },
-  Facebook: { account: "Northstar AI Page", accountType: "connected", format: "Landscape 1.91:1", media: "Generated image" },
+// 平台展示默认（格式/媒体类型）。
+// ⚠️ 这里【不再有 account 账号名】（2026-07-15 移除）：曾经写死 X:"@northstar_ai"、Instagram:"@northstar.ai"
+// 这类示例名，导致用户看到的是编造的假账号（哪怕他真实授权的是 @ChenR292518）。
+// 账号身份一律由 resolveVariantAccount() 从真实已连接账号解析——见下。
+const VARIANT_DEFAULTS: Record<Platform, { format: string; media: string }> = {
+  TikTok: { format: "Cover 9:16", media: "Cover image" },
+  Instagram: { format: "Feed 1:1", media: "Generated image" },
+  YouTube: { format: "Thumbnail 16:9", media: "Thumbnail" },
+  X: { format: "Landscape 16:9", media: "Generated image" },
+  Reddit: { format: "Text post · No media", media: "No media" },
+  Facebook: { format: "Landscape 1.91:1", media: "Generated image" },
+}
+
+/**
+ * 变体上"没有已授权账号"时 account 的值 = 【空串】。
+ * 刻意不用 "未连接账号" 之类的哨兵字符串：account 被十几处 UI 直接渲染（platform-frames 六个平台框、
+ * 预览卡、批量发布、日历…），哨兵会到处漏成一个假的"账号名"。空串则让各处已有的
+ * `account || t("No account","未绑定账号")` 兜底自然生效。
+ */
+
+/**
+ * 从【真实已连接账号】解析某平台的变体账号身份 —— 全仓唯一入口。
+ *
+ * 为什么必须有：账号身份是【事实】，不能由生成层/默认表编造。
+ * 只认 status==="Connected" 的账号：Expired/PermissionMissing/NotConnected 都不是"能发的账号"，
+ * 拿它们的名字去显示会让用户以为能发，点了才发现不行。
+ * 找不到 → account=""（各处 UI 用 `||` 兜底渲染成「未绑定账号」），accountType=undefined。
+ */
+function resolveVariantAccount(
+  platform: Platform,
+  accounts: Account[],
+): { account: string; accountType?: AccountType } {
+  const acct = accounts.find((a) => a.platform === platform && a.status === "Connected")
+  return acct ? { account: acct.name, accountType: acct.type } : { account: "" }
+}
+
+/**
+ * 变体 → X 上【实际会发出去的完整文本】。预览与发布共用这一个函数。
+ *
+ * 口径必须与发布层的 fullText(adapters/x.ts) 一致：
+ *   store 送 content.text = [hook, body]，发布层再拼 hashtags、linkUrl，最终 join("\n\n")。
+ * 所以这里等价于 [hook, body, hashtags, ctaUrl].join("\n\n")。
+ * ⚠️ 改任何一边都要同步改另一边，否则预览的字数/分段会和真实发出去的不一致。
+ */
+export function variantFullText(v: PostVariant): string {
+  return [v.hook, stripImageTokens(v.body ?? ""), v.hashtags, v.ctaUrl]
+    .map((x) => x?.trim())
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+/**
+ * 变体上【已出图】的图片 URL，按正文里 [[img:N]] 的出现顺序 —— 这就是"实际会发出去的图"。
+ *
+ * ⚠️ 必须与预览（platform-frames.readyImageUrls）【同一口径】：
+ * 预览画几张、按什么顺序，真实就得发几张、按什么顺序。两边算法不一致 = 预览骗人。
+ * 正文没标 token 但已出图的槽也带上（不丢图）。
+ */
+export function variantImageUrls(v: PostVariant): string[] {
+  const byRef = new Map((v.imageSlots ?? []).filter((s) => s.status === "ready" && s.url).map((s) => [s.ref, s.url!]))
+  const ordered: string[] = []
+  for (const seg of splitBodyByImageTokens(v.body ?? "")) {
+    if (seg.type === "image") {
+      const url = byRef.get(seg.ref)
+      if (url) {
+        ordered.push(url)
+        byRef.delete(seg.ref)
+      }
+    }
+  }
+  return [...ordered, ...byRef.values()]
+}
+
+/** 把一批变体的账号身份重写成真实的（生成层返回的 account 恒为空，由此处回填）。 */
+function applyRealAccounts(variants: PostVariant[], accounts: Account[]): PostVariant[] {
+  return variants.map((v) => ({ ...v, ...resolveVariantAccount(v.platform, accounts) }))
 }
 
 const COPY_BODY: Record<Platform, (topic: string, p: BrandProfile) => string> = {
@@ -189,14 +270,19 @@ const COPY_BODY: Record<Platform, (topic: string, p: BrandProfile) => string> = 
   Facebook: (t, p) => `${t} — ${p.description}. Friendly, conversational tone for the Page audience.`,
 }
 
-export function buildVariant(platform: Platform, topic: string, profile: BrandProfile): PostVariant {
+export function buildVariant(
+  platform: Platform,
+  topic: string,
+  profile: BrandProfile,
+  accounts: Account[] = [],
+): PostVariant {
   const mode = platformPublishMode(platform)
   const d = VARIANT_DEFAULTS[platform]
   const safeTopic = topic || "New social topic"
   return {
     platform,
-    account: d.account,
-    accountType: d.accountType,
+    // 账号身份从真实已连接账号解析，不再用写死的示例名。
+    ...resolveVariantAccount(platform, accounts),
     hook: safeTopic,
     body: COPY_BODY[platform](safeTopic, profile),
     hashtags: profile.hashtags,
@@ -205,7 +291,9 @@ export function buildVariant(platform: Platform, topic: string, profile: BrandPr
     format: d.format,
     mediaAsset: d.media,
     publishMode: mode,
-    state: mode === "manual" ? "Manual fallback" : "Valid",
+    // 非 auto 平台 = 该平台不支持自动发布。历史上这里是一个专门的"手动兜底"状态，已整套移除：
+    // 不支持就是不支持，不再用一个状态假装有别的路可走。
+    state: mode === "manual" ? "Unsupported" : "Valid",
     suggestedTime: "10:00",
   }
 }
@@ -227,6 +315,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   const [suggestions, setSuggestions] = useState<Recommendation[]>([])
   const [suggestionsGenerated, setSuggestionsGenerated] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
+  // 最近一次发布结果（带平台侧链接）→ 驱动「发布成功」弹窗。
+  const [publishResult, setPublishResult] = useState<PublishOutcome | null>(null)
   const [studio, setStudio] = useState<StudioDraft>({
     topic: "",
     platforms: ["X", "Instagram"],
@@ -241,14 +331,25 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200)
   }, [])
   const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), [])
+  const dismissPublishResult = useCallback(() => setPublishResult(null), [])
 
-  // 挂载时从后端加载真实数据（前后端数据库打通）。后端不可用则保留 mock，UI 仍可看。
+  // 挂载时从后端加载真实数据（前后端数据库打通）。
+  // ⚠️ mock 只是首帧占位，【绝不能留在屏幕上】——它带着 @northstar_ai 这类假账号和假帖子，
+  // 用户会以为是自己的数据（2026-07-15 真实发生：用户在日历里看到一堆 Northstar 示例任务）。
+  // 故：无工作区 = 新用户，一律清空；后端异常也清空并如实告警，不拿假数据糊弄。
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
         const { workspace: ws } = await api.getWorkspace()
-        if (!ws || cancelled) return
+        if (cancelled) return
+        if (!ws) {
+          // 新用户还没建工作区：清掉 mock，走 onboarding。留着 mock 会让他看到别人的示例数据。
+          setPosts([])
+          setCalendar([])
+          setAccounts([])
+          return
+        }
         const { projects: projs } = await api.getProjects()
         const activeId = ws.activeProjectId ?? projs[0]?.id ?? null
         const activeProj = projs.find((p) => p.id === activeId) ?? projs[0]
@@ -279,7 +380,13 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         setPosts(postsRes.posts)
         setCalendar(calRes.calendar)
       } catch (e) {
-        console.warn("[store] 后端加载失败，回退本地 mock：", (e as Error).message)
+        // 后端挂了也别把 mock 留在屏幕上假装有数据——那比空白更糟（用户会当成自己的帖子去操作）。
+        if (cancelled) return
+        setPosts([])
+        setCalendar([])
+        setAccounts([])
+        console.warn("[store] 后端加载失败：", (e as Error).message)
+        pushToast(translate("Failed to load your data — please refresh.", "加载数据失败，请刷新重试。"), "warn")
       }
     })()
     return () => {
@@ -560,7 +667,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   // 二次修改：把库内帖子灌回 studio。记 editingPostId 让存回走「更新同一条」。
   // copyGenerated=true（已有文案，直接进编辑窗口而非重新生成）；imageGenerated 按是否已有 ready 配图槽 / hasImage 派生。
   //
-  // 已排期帖子（Scheduled/ManualFallback）的「撤回草稿再改」：点击二次修改的瞬间就把它从排期撤下——
+  // 已排期帖子（Scheduled）的「撤回草稿再改」：点击二次修改的瞬间就把它从排期撤下——
   // 帖子回到 Ready、删掉日历项。理由（用户拍板）：编辑期间它必须不在发布队列里，否则到点会自动投递出半成品/非预期内容。
   // 先同步 setStudio 让编辑弹窗立刻带内容打开，再异步做撤回（不阻塞开窗）。
   const startStudioFromPost = useCallback(
@@ -578,8 +685,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       })
       setAgentTab("Content Create")
 
-      // 已排期 → 撤回草稿（去队列）。仅对 Scheduled/ManualFallback 生效；Ready/Draft 本就没排期，跳过。
-      const isScheduled = post.status === "Scheduled" || post.status === "ManualFallback"
+      // 已排期 → 撤回草稿（去队列）。仅对 Scheduled 生效；Ready/Draft 本就没排期，跳过。
+      const isScheduled = post.status === "Scheduled"
       if (isScheduled && activeProjectId) {
         // 乐观更新本地：帖子回 Ready、日历移除该帖排期。
         setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, status: "Ready", updatedAt: "Just now" } : p)))
@@ -609,7 +716,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       variants:
         s.variants.length > 0
           ? s.variants
-          : s.platforms.map((p) => buildVariant(p, s.topic || "New social topic", profile)),
+          : s.platforms.map((p) => buildVariant(p, s.topic || "New social topic", profile, accounts)),
     }))
     pushToast(translate("Copy generated. Actual credits: 7", "已生成文案。实际 credits：7"), "success")
   }, [profile, pushToast])
@@ -708,7 +815,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         modes,
       })
       // imageGenerated 重置为 false：新一轮生成会带来新的 imageSlots（多为 empty），旧的"已出图"标记不该延续。
-      setStudio((s) => ({ ...s, copyGenerated: true, imageGenerated: false, variants: res.variants }))
+      // 生成层不产账号身份（account 恒空），这里用真实已连接账号回填——绝不显示编造的账号名。
+      setStudio((s) => ({ ...s, copyGenerated: true, imageGenerated: false, variants: applyRealAccounts(res.variants, accounts) }))
       setCredits((c) => c - res.credits)
       pushToast(translate(`Variants generated (AI) · credits: ${res.credits}`, `已生成内容变体（AI）· credits：${res.credits}`), "success")
     } catch (e) {
@@ -724,7 +832,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       variants: s.platforms.map((p) => {
         const existing = s.variants.find((v) => v.platform === p)
         if (existing) return existing
-        const base = buildVariant(p, s.topic || "New social topic", profile)
+        const base = buildVariant(p, s.topic || "New social topic", profile, accounts)
         return { ...base, hook: "", body: "", hashtags: "", state: "Needs edits" as const }
       }),
     }))
@@ -755,7 +863,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       return null
     }
     const variants =
-      studio.variants.length > 0 ? studio.variants : studio.platforms.map((p) => buildVariant(p, studio.topic, profile))
+      studio.variants.length > 0 ? studio.variants : studio.platforms.map((p) => buildVariant(p, studio.topic, profile, accounts))
     // hasImage/assetType 不能只看 studio.imageGenerated（那是整贴出图时代的旧字段）：
     // 按槽出图场景下即使 imageGenerated 没置位，只要任一变体里有槽已经 ready，也算"有图"。
     const hasReadyImage =
@@ -801,38 +909,58 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     }
   }, [activeProjectId, studio.editingPostId, studio.topic, studio.platforms, studio.variants, studio.imageGenerated, profile, pushToast])
 
+  /**
+   * Studio「加入日历」= 排期。
+   *
+   * ⚠️ 2026-07-15 重写，此前这个函数有三个致命问题：
+   *  1. 【不存帖子】也【不传 postId】→ 造出孤儿日历项：日历上有任务、内容库里却没有这条帖子，
+   *     后续「立即发布」找不到帖子直接废掉（publishCalendarItemNow 靠 postId 找帖子）。
+   *  2. 【完全不碰 post.status】→ 用户明明约定了发布时间，帖子却不是「已排期」。
+   *  3. 默认日期写死 "Wed Jul 8"、时间 "09:00" → 所有排期都落到 7 月 8 号。
+   * 现在：先存库拿到 post → 用 post.id 建日历项 → 帖子标 Scheduled。三者原子对齐。
+   */
   const addStudioToCalendar = useCallback(
-    async (date = "Wed Jul 8", time = "09:00") => {
+    async (date?: string, time?: string) => {
       if (studio.variants.length === 0 && !studio.topic) return
       if (!activeProjectId) {
         pushToast(translate("Select a project first", "请先选择项目"), "warn")
         return
       }
-      const variants =
-        studio.variants.length > 0 ? studio.variants : studio.platforms.map((p) => buildVariant(p, studio.topic, profile))
-      const jobs = variants.map((v) => ({
-        platform: v.platform,
-        account: v.account,
-        time: v.suggestedTime,
-        publishMode: v.publishMode,
-        status: "Planned" as PostStatus,
-      }))
+      const at = defaultScheduleAt()
+      const d = date || at.date
+      const tm = time || at.time
       try {
+        // ① 先落库（复用 saveStudioToLibrary：它会处理"新建 vs 更新同一条"）——
+        //    没有帖子就谈不上排期，日历项必须挂在一条真实帖子上。
+        const post = await saveStudioToLibrary()
+        if (!post) return // saveStudioToLibrary 内部已 toast 过失败原因
+        const jobs = post.variants.map((v) => ({
+          platform: v.platform,
+          account: v.account,
+          time: tm,
+          publishMode: v.publishMode,
+          status: "Scheduled" as PostStatus,
+        }))
+        // ② 建日历项，带上 postId（这是日历与帖子的唯一关联键）
         const { item } = await api.createCalendarItem({
           projectId: activeProjectId,
-          topic: studio.topic || "Untitled topic",
-          date,
-          time,
-          status: "Planned",
+          postId: post.id,
+          topic: studio.topic || post.title || "Untitled topic",
+          date: d,
+          time: tm,
+          status: "Scheduled",
           variants: jobs,
         })
         setCalendar((prev) => [...prev, item])
-        pushToast(translate("Added to calendar", "已加入日历"), "success")
+        // ③ 帖子标「已排期」——约定了发布时间就该是这个状态
+        await api.updatePost(post.id, { status: "Scheduled" })
+        setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, status: "Scheduled" } : p)))
+        pushToast(translate(`Scheduled for ${d} ${tm}`, `已排期：${d} ${tm}`), "success")
       } catch (e) {
         pushToast(translate(`Add to calendar failed: ${(e as Error).message}`, `加入日历失败：${(e as Error).message}`), "warn")
       }
     },
-    [studio.variants, studio.topic, studio.platforms, activeProjectId, profile, pushToast],
+    [studio.variants, studio.topic, activeProjectId, saveStudioToLibrary, pushToast],
   )
 
   const addPlanItemToCalendar = useCallback(
@@ -843,7 +971,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       }
       const jobs = item.platforms.map((p) => ({
         platform: p,
-        account: VARIANT_DEFAULTS[p].account,
+        // 真实已连接账号；没有就 NO_ACCOUNT_LABEL（UI 渲染成「未连接账号」），不编造示例名。
+        account: resolveVariantAccount(p, accounts).account,
         time: item.time,
         publishMode: platformPublishMode(p),
         status: "Planned" as PostStatus,
@@ -901,69 +1030,103 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   )
 
   // 真实发布：把 post 里 auto 的变体组装成发布项，调 /api/publish 真发到平台，按结果回写帖子状态。
-  // 手动平台/无已连接账号的变体不进 items（发布层对它们本就会返回 manual_fallback）；全部无可发时如实提示。
+  // 手动平台/无已连接账号的变体不进 items（这些平台不支持自动发布）；全部无可发时如实提示。
   const publishPostNow = useCallback(
-    async (post: SocialPost): Promise<{ published: number; failed: number; manual: number } | null> => {
+    async (post: SocialPost): Promise<{ published: number; failed: number } | null> => {
       if (!activeProjectId) {
         pushToast(translate("Select a project first", "请先选择项目"), "warn")
         return null
       }
-      // 已发布过的帖子不再重复发：X 等平台会因「重复内容」直接 403 拒绝，重发既无意义又误导用户。
-      // 要再发请先「二次修改」改文案（会回到草稿态），或复制成新帖。
-      if (post.status === "Published" || post.status === "ManuallyPublished") {
-        pushToast(translate("Already published — edit the copy to publish again.", "该帖已发布过，如需再发请先二次修改文案。"), "warn")
-        return null
-      }
+      // ⚠️ 这里【不再封死已发布的帖子】（2026-07-15，用户明确要求"不要把再次发布的可能性封死了"）。
+      //
+      // 旧逻辑：status==="Published" 直接 return，理由是"X 会因重复内容 403"。
+      // 但那个理由【只在"同账号 + 同文案"时成立】，它误伤了两个完全合法的场景：
+      //   · 同一条内容发到【另一个账号】（用户有 @ChenR292518 和 @KonoeKKK 两个 X 号）
+      //   · 改了文案【再发一次】
+      // 现在：允许重发。真·重复（同号同文）由 X 自己的重复检测拒绝，我们如实透传它的报错——
+      // 那比我们自己拍脑袋一刀切准确得多。UI 侧对已发布的帖子用「再次发布」+ 二次确认表达意图。
       const items: PublishItem[] = []
+      // 因"没有该平台的已授权账号 / 变体选定的账号已不可用"而被跳过的平台——要如实告诉用户，不能静默。
+      const skipped: Platform[] = []
       for (const v of post.variants) {
         if (v.publishMode !== "auto") continue
-        // 为该 auto 变体找同平台的已连接账号：优先精确匹配变体选定的账号名，退回该平台任一已连接账号。
+        // 为该 auto 变体找变体上【选定的那个】已连接账号。
+        // ⚠️ 曾经这里有个 `?? accounts.find(平台任一已连接)` 的兜底（2026-07-15 移除）：
+        // 变体上写着 @northstar_ai（编造的假名）→ 精确匹配失败 → 悄悄退回用户真正授权的另一个账号，
+        // 用户以为发给 A、实际发给 B，全程没有任何提示。账号身份不该有"猜"的余地。
+        // 现在：只认变体选定的账号；对不上就跳过并如实告知，绝不替用户改发布目标。
         const norm = (s: string) => s.replace(/^@/, "")
-        const acct =
-          accounts.find(
-            (a) => a.platform === v.platform && a.status === "Connected" && norm(a.name) === norm(v.account),
-          ) ?? accounts.find((a) => a.platform === v.platform && a.status === "Connected")
-        if (!acct) continue // 无已连接账号 → 交给手动兜底，不进自动发布 items
+        const acct = accounts.find(
+          (a) => a.platform === v.platform && a.status === "Connected" && norm(a.name) === norm(v.account),
+        )
+        if (!acct) {
+          skipped.push(v.platform)
+          continue
+        }
         items.push({
           target: { platform: v.platform, accountId: acct.id, accountType: acct.type },
           content: {
-            // X 等单文本平台由发布层 composeText 组装：正文(去内联图 token) + 话题标签 + CTA 链接。
-            text: [v.hook, stripImageTokens(v.body)].map((s) => s?.trim()).filter(Boolean).join("\n\n"),
+            // 正文 = hook + body（去内联图 token）；hashtags / linkUrl 由发布层的 fullText 再拼上。
+            // 预览用的 variantFullText 等价于这三者拼完的结果——两边同源，所以"预览即所发"。
+            text: [v.hook, stripImageTokens(v.body)].map((x) => x?.trim()).filter(Boolean).join("\n\n"),
             hashtags: v.hashtags?.trim() || undefined,
             linkUrl: v.ctaUrl?.trim() || undefined,
+            // ⚠️ 配图必须送（2026-07-15 补）：此前【压根不送 media】，于是预览里画着图、
+            // 真实发出去的是纯文字推——预览在骗人。发布层 uploadImages 会按 url 取字节再传 X。
+            // 顺序 = 正文里 [[img:N]] 的出现顺序（与预览的 readyImageUrls 同一口径）。
+            media: variantImageUrls(v).map((url) => ({ kind: "image" as const, url })),
             // X 发帖形态（普通推/串推/长文）由用户在变体上选定；缺省普通推文。发布层据此走三条不同发帖路径。
             ...(v.platform === "X" ? { x: { postType: v.xPostType ?? "tweet" } } : {}),
           },
         })
       }
       if (items.length === 0) {
+        const list = skipped.join(" / ")
         pushToast(
-          translate("No connected account to auto-publish — export and post manually.", "没有可自动发布的已连接账号，请手动发布。"),
+          translate(
+            `No authorized account for ${list || "the selected platforms"} — authorize one in Account Hub first.`,
+            `${list || "所选平台"}没有已授权的账号，请先到账号中心授权。`,
+          ),
           "warn",
         )
         return null
+      }
+      // 部分平台没账号：能发的照发，但必须说清哪些没发出去——静默跳过会让用户以为全发了。
+      if (skipped.length > 0) {
+        pushToast(
+          translate(
+            `${skipped.join(" / ")} skipped — no authorized account.`,
+            `${skipped.join(" / ")} 已跳过：没有已授权的账号。`,
+          ),
+          "warn",
+        )
       }
       try {
         const res = await api.publish({ projectId: activeProjectId, postId: post.id, items })
         const published = res.results.filter((r) => r.outcome === "published").length
         const failed = res.results.filter((r) => r.outcome === "failed")
-        const manual = res.results.filter((r) => r.outcome === "manual_fallback").length
-        // 回写帖子状态：有失败=Failed；全成功=Published；否则(仅手动兜底)=ManualFallback。
-        const status: PostStatus = failed.length > 0 ? "Failed" : published > 0 ? "Published" : "ManualFallback"
+        // 回写帖子状态：有失败=Failed，否则=Published。
+        // items 非空才走到这里（空的话上面已 return），且发布层只会返回 published/failed，
+        // 所以不存在"两者皆 0"的第三种情形——原先那个 ManualFallback 兜底分支随「转手动」一并移除。
+        const status: PostStatus = failed.length > 0 ? "Failed" : "Published"
         const failureReason =
           failed.length > 0 ? failed.map((f) => `${f.platform}: ${f.message}`).join("; ") : null
         await api.updatePost(post.id, { status, failureReason })
         setPosts((prev) =>
           prev.map((p) => (p.id === post.id ? { ...p, status, failureReason: failureReason ?? undefined, updatedAt: "Just now" } : p)),
         )
+        // 把平台侧真实链接留住 → 弹窗给用户点开看（remoteUrl 一路从 X API 传回来，不该在这里被丢掉）。
+        setPublishResult({
+          postTitle: post.title,
+          links: res.results
+            .filter((r): r is Extract<typeof r, { outcome: "published" }> => r.outcome === "published")
+            .map((r) => ({ platform: r.platform, url: r.remoteUrl, remoteId: r.remoteId })),
+          failed: failed.map((f) => ({ platform: f.platform, message: f.message })),
+        })
         if (failed.length > 0) {
           pushToast(translate(`Publish failed: ${failureReason}`, `发布失败：${failureReason}`), "warn")
-        } else if (published > 0) {
-          pushToast(translate(`Published to ${published} platform(s)`, `已发布到 ${published} 个平台`), "success")
-        } else {
-          pushToast(translate("Some platforms need manual publishing", "部分平台需手动发布"), "default")
         }
-        return { published, failed: failed.length, manual }
+        return { published, failed: failed.length }
       } catch (e) {
         pushToast(translate(`Publish failed: ${(e as Error).message}`, `发布失败：${(e as Error).message}`), "warn")
         return null
@@ -983,8 +1146,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       }
       const outcome = await publishPostNow(post)
       if (!outcome) return // publishPostNow 已 toast 原因（无可发/失败）
-      // 回写日历项：auto 子任务标 Published，失败则整项 Failed；有手动则 ManualFallback。
-      const itemStatus: PostStatus = outcome.failed > 0 ? "Failed" : outcome.published > 0 ? "Published" : "ManualFallback"
+      // 回写日历项：auto 子任务标 Published，失败则整项 Failed。
+      const itemStatus: PostStatus = outcome.failed > 0 ? "Failed" : "Published"
       const jobs = (item?.variants ?? []).map((v) =>
         v.publishMode === "auto" ? { ...v, status: itemStatus } : v,
       )
@@ -998,41 +1161,27 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     [calendar, posts, activeProjectId, publishPostNow, pushToast],
   )
 
-  const convertCalendarItemToManual = useCallback(
-    async (id: string) => {
-      const item = calendar.find((c) => c.id === id)
-      const jobs = (item?.variants ?? []).map((v) => ({
-        ...v,
-        publishMode: "manual" as const,
-        status: "ManualFallback" as PostStatus,
-        reason: "Converted to manual publishing",
-      }))
-      setCalendar((prev) => prev.map((c) => (c.id === id ? { ...c, status: "ManualFallback", variants: jobs } : c)))
-      try {
-        if (activeProjectId) await api.updateCalendarJobs(id, { projectId: activeProjectId, itemStatus: "ManualFallback", jobs })
-      } catch (e) {
-        console.warn("[store] 转手动落库失败：", (e as Error).message)
-      }
-      pushToast(translate("Converted to manual fallback", "已转为手动发布"), "default")
-    },
-    [calendar, activeProjectId, pushToast],
-  )
 
+  /** 内容库「排期」。date/time 不传则默认「当前时间 + 10 分钟」（此前日期写死 "Wed Jul 8"，用户根本没机会选）。 */
   const schedulePost = useCallback(
-    async (post: SocialPost) => {
+    async (post: SocialPost, date?: string, time?: string) => {
       if (!activeProjectId) {
         pushToast(translate("Select a project first", "请先选择项目"), "warn")
         return
       }
-      const allManual = post.variants.every((v) => v.publishMode === "manual")
-      const postStatus: PostStatus = allManual ? "ManualFallback" : "Scheduled"
+      const at = defaultScheduleAt()
+      const d = date || at.date
+      const tm = time || at.time
+      // 排期后一律 Scheduled。原先「全是手动平台」会标 ManualFallback，该状态已随「转手动」整套移除；
+      // 不支持自动发布的平台在 reason 里如实说明，不再用一个专门的状态去表达它。
+      const postStatus: PostStatus = "Scheduled"
       const jobs = post.variants.map((v) => ({
         platform: v.platform,
         account: v.account,
-        time: v.suggestedTime,
+        time: tm,
         publishMode: v.publishMode,
-        status: (v.publishMode === "auto" ? "Scheduled" : "ManualFallback") as PostStatus,
-        reason: v.publishMode === "manual" ? "Auto publishing not supported in P0" : undefined,
+        status: "Scheduled" as PostStatus,
+        reason: v.publishMode === "manual" ? "该平台不支持自动发布" : undefined,
       }))
       try {
         await api.updatePost(post.id, { status: postStatus })
@@ -1040,8 +1189,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
           projectId: activeProjectId,
           postId: post.id,
           topic: post.title,
-          date: "Wed Jul 8",
-          time: post.variants[0]?.suggestedTime || "09:00",
+          date: d,
+          time: tm,
           status: postStatus,
           variants: jobs,
         })
@@ -1055,33 +1204,6 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     [activeProjectId, pushToast],
   )
 
-  const markManuallyPublished = useCallback(
-    async (postId: string) => {
-      try {
-        await api.updatePost(postId, { status: "ManuallyPublished" })
-        setPosts((prev) =>
-          prev.map((p) => (p.id === postId ? { ...p, status: "ManuallyPublished", updatedAt: "Just now" } : p)),
-        )
-        setCalendar((prev) =>
-          prev.map((c) =>
-            c.postId === postId
-              ? {
-                  ...c,
-                  status: "ManuallyPublished",
-                  variants: c.variants.map((v) =>
-                    v.status === "ManualFallback" ? { ...v, status: "ManuallyPublished" } : v,
-                  ),
-                }
-              : c,
-          ),
-        )
-        pushToast(translate("Marked as manually published", "已标记为手动发布"), "success")
-      } catch (e) {
-        pushToast(translate(`Update failed: ${(e as Error).message}`, `更新失败：${(e as Error).message}`), "warn")
-      }
-    },
-    [pushToast],
-  )
 
   const retryFailed = useCallback(
     async (postId: string) => {
@@ -1107,18 +1229,6 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     [pushToast],
   )
 
-  const archivePost = useCallback(
-    async (postId: string) => {
-      try {
-        await api.updatePost(postId, { status: "Archived" })
-        setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, status: "Archived" } : p)))
-        pushToast(translate("Archived", "已归档"), "default")
-      } catch (e) {
-        pushToast(translate(`Archive failed: ${(e as Error).message}`, `归档失败：${(e as Error).message}`), "warn")
-      }
-    },
-    [pushToast],
-  )
 
   // 硬删除草稿：调后端 DELETE（项目级隔离），成功后从本地列表移除。作用面/二次确认在 UI 层保证。
   const deletePost = useCallback(
@@ -1294,6 +1404,25 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     [pushToast],
   )
 
+  /**
+   * 彻底删除账号（区别于 disconnectAccount：那只清 token、行仍在列表里显示为「未连接」）。
+   * 失败要把行放回去——乐观删除若不回滚，用户会以为删成功了，刷新后它又冒出来。
+   */
+  const deleteAccount = useCallback(
+    async (id: string) => {
+      const before = accounts
+      setAccounts((prev) => prev.filter((a) => a.id !== id))
+      try {
+        await api.deleteAccount(id)
+        pushToast(translate("Account removed", "已删除账号"), "success")
+      } catch (e) {
+        setAccounts(before) // 回滚：删失败就得让它回到列表，不能骗用户
+        pushToast(translate(`Remove failed: ${(e as Error).message}`, `删除失败：${(e as Error).message}`), "warn")
+      }
+    },
+    [accounts, pushToast],
+  )
+
   const generateSuggestions = useCallback(() => {
     setCredits((c) => c - 18)
     setSuggestions(opsRecommendations)
@@ -1341,9 +1470,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       setStudioTopic,
       posts,
       saveStudioToLibrary,
-      markManuallyPublished,
       retryFailed,
-      archivePost,
       deletePost,
       publishPostNow,
       calendar,
@@ -1352,18 +1479,20 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       rescheduleCalendarItem,
       cancelCalendarItem,
       publishCalendarItemNow,
-      convertCalendarItemToManual,
       accounts,
       addManualAccount,
       connectAccount,
       disconnectAccount,
       refreshAccount,
+      deleteAccount,
       suggestions,
       suggestionsGenerated,
       generateSuggestions,
       toasts,
       pushToast,
       dismissToast,
+      publishResult,
+      dismissPublishResult,
     }),
     [
       view,
@@ -1399,9 +1528,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       setStudioTopic,
       posts,
       saveStudioToLibrary,
-      markManuallyPublished,
       retryFailed,
-      archivePost,
       deletePost,
       publishPostNow,
       calendar,
@@ -1410,18 +1537,20 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       rescheduleCalendarItem,
       cancelCalendarItem,
       publishCalendarItemNow,
-      convertCalendarItemToManual,
       accounts,
       addManualAccount,
       connectAccount,
       disconnectAccount,
       refreshAccount,
+      deleteAccount,
       suggestions,
       suggestionsGenerated,
       generateSuggestions,
       toasts,
       pushToast,
       dismissToast,
+      publishResult,
+      dismissPublishResult,
     ],
   )
 

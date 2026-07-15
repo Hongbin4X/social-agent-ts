@@ -29,6 +29,13 @@
       "when": 1783834143565,
       "tag": "0003_equal_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1784111423236,
+      "tag": "0004_familiar_shaman",
+      "breakpoints": true
     }
   ]
 }

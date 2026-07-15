@@ -355,3 +355,39 @@ export const schema = {
 
 // 忽略未使用的 sql import 警告：保留以便后续在列默认值里用原生表达式。
 void sql
+
+// ── 发布记录（一次发布 = 一条帖子发到一个平台账号）─────────────────────────
+//
+// 2026-07-15 新增。此前【完全没有】：库里只有 ssa_post.status="Published"，
+// 但"发到了哪个账号、平台侧链接是什么"一概不知——remoteUrl 从 X API 传回来后就被丢掉了。
+// 后果：
+//   · 用户看不到自己发出去的帖子链接；
+//   · 无法支持「换个账号再发一次」（不知道发过哪些号，也没法提醒重复）；
+//   · 出问题无从审计（这条帖到底发出去没有、发到哪了）。
+//
+// 一条帖子可以有多条记录：多平台、多账号、多次重发 —— 刻意【不加唯一约束】，
+// 因为「同一帖子发到不同账号」「改了文案再发一次」都是合法且用户明确要的场景。
+export const ssaPublishRecord = mysqlTable(
+  "ssa_publish_record",
+  {
+    id: id(),
+    workspaceId: varchar("workspace_id", { length: 32 }).notNull(),
+    projectId: varchar("project_id", { length: 32 }).notNull(),
+    postId: varchar("post_id", { length: 32 }).notNull(),
+    platform: varchar("platform", { length: 20 }).$type<Platform>().notNull(),
+    /** 发布用的本地账号 id（ssa_social_account.id）——「发到哪个号」的答案。 */
+    accountId: varchar("account_id", { length: 32 }).notNull(),
+    /** 发布时的账号显示名快照：账号事后被删/改名，历史记录仍要能读懂。 */
+    accountName: varchar("account_name", { length: 128 }),
+    /** 平台侧帖子 id / 链接（成功时有）。 */
+    remoteId: varchar("remote_id", { length: 64 }),
+    remoteUrl: varchar("remote_url", { length: 500 }),
+    /** published | failed —— 失败的也要记，否则用户不知道试过没有。 */
+    outcome: varchar("outcome", { length: 20 }).notNull(),
+    failureReason: varchar("failure_reason", { length: 1000 }),
+    /** X 发帖形态（tweet/thread/article）快照，便于回看当时发的是什么形态。 */
+    postType: varchar("post_type", { length: 20 }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("idx_pubrec_post").on(t.postId), index("idx_pubrec_project").on(t.projectId)],
+)

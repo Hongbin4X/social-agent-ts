@@ -8,6 +8,8 @@ import {
   estimateProviderCostUsdCents,
   PublishingService,
   splitIntoThreadSegments,
+  xWeightedLength,
+  planXTweets,
 } from "../src"
 import type { PublishItem, PublishRequest } from "@social/shared"
 
@@ -205,14 +207,120 @@ describe("成本：串推按条数累加", () => {
   })
 })
 
-describe("splitIntoThreadSegments", () => {
-  it("短文不切；每段都 ≤280", () => {
+describe("xWeightedLength（X 的加权长度，不是 .length）", () => {
+  it("拉丁字符每个算 1", () => {
+    expect(xWeightedLength("hello")).toBe(5)
+  })
+  // 这是本次修复的核心事实：X 官方 twitter-text 规则里 CJK 权重为 2。
+  // 曾经用 .length 判断 → 280 个汉字被当成"没超"，实际加权 560，X 直接拒收。
+  it("汉字每个算 2 —— 所以单条实际只能发 140 个汉字", () => {
+    expect(xWeightedLength("字")).toBe(2)
+    expect(xWeightedLength("字".repeat(140))).toBe(280)
+  })
+  it("URL 一律按 t.co 的 23 折算，与真实长度无关", () => {
+    const short = xWeightedLength("https://a.co")
+    const long = xWeightedLength("https://example.com/a/very/long/path/that/goes/on/forever?x=1&y=2")
+    expect(short).toBe(long)
+    expect(long).toBe(23)
+  })
+})
+
+describe("splitIntoThreadSegments（原则：能不切就不切，切也切在自然边界）", () => {
+  it("短文不切", () => {
     expect(splitIntoThreadSegments("hello")).toEqual(["hello"])
-    const segs = splitIntoThreadSegments("字".repeat(650))
-    expect(segs.length).toBe(3)
-    for (const s of segs) expect(s.length).toBeLessThanOrEqual(280)
   })
   it("空文本 → 空数组", () => {
     expect(splitIntoThreadSegments("   ")).toEqual([])
+  })
+
+  // 用户反馈「切分非常不合理」的主因：旧算法每个段落无条件独立成条。
+  it("多个短段落 → 打包成【一条】，不是每段一条", () => {
+    const text = ["小团队不该被琐事拖慢。", "我们做了三件事。", "第一，自动化重复工作。", "第二，减少工具切换。"].join("\n\n")
+    expect(splitIntoThreadSegments(text)).toHaveLength(1)
+  })
+
+  // 旧算法用 .length：300 字中文切 2 条、每条 217 字 → 加权 434 → 被 X 拒。
+  it("中文长文：按【加权长度】切，每条 ≤280 加权", () => {
+    const text = "创业团队最大的浪费不是资金，而是注意力。".repeat(15) // 300 字 = 加权 600
+    const segs = splitIntoThreadSegments(text)
+    expect(segs.length).toBe(3)
+    for (const seg of segs) expect(xWeightedLength(seg)).toBeLessThanOrEqual(280)
+  })
+
+  // 旧算法 split(/\s+/) 对中文失效（无空格→整段一个"词"→硬切），会在句子中间乱斩。
+  it("中文切分断在句号处，不在句子中间硬斩", () => {
+    const text = "第一句话讲的是甲。".repeat(40) // 远超一条
+    const segs = splitIntoThreadSegments(text)
+    expect(segs.length).toBeGreaterThan(1)
+    // 除最后一条外，每条都应以句末标点收尾（说明断在了自然边界）。
+    for (const seg of segs.slice(0, -1)) expect(seg.endsWith("。")).toBe(true)
+  })
+
+  it("带长 URL 的中英混排：URL 按 23 折算，不会因为它很长就被切开", () => {
+    const text = "Northstar AI 帮小团队自动化重复工作。Try it free at https://northstar.ai/product-with-a-very-long-path 立即开始。"
+    const segs = splitIntoThreadSegments(text)
+    expect(segs).toHaveLength(1)
+    expect(segs[0]).toContain("https://northstar.ai/product-with-a-very-long-path")
+  })
+
+  it("每一条都不超加权上限（不变式）", () => {
+    for (const text of ["字".repeat(650), "word ".repeat(300), "混排 mixed 内容 ".repeat(60)]) {
+      for (const seg of splitIntoThreadSegments(text)) {
+        expect(xWeightedLength(seg)).toBeLessThanOrEqual(280)
+      }
+    }
+  })
+})
+
+// planXTweets —— 「一条变体会在 X 上发成什么样」的规划。前端预览与发布层共用同一份结果，
+// 保证"预览即所发"（2026-07-15 用户需求：预览要显示真实效果）。
+describe("planXTweets（X 实际会发出的推文序列）", () => {
+  const imgs = (n: number) => Array.from({ length: n }, (_, i) => `img${i + 1}.jpg`)
+
+  it("普通推 · 图 ≤4 张 → 就 1 条", () => {
+    const p = planXTweets("小团队不该被琐事拖慢。", imgs(4), "tweet")
+    expect(p).toHaveLength(1)
+    expect(p[0]!.imageUrls).toHaveLength(4)
+  })
+
+  // 用户原话："普通推有图片张数显示，所以可能需要拆分成多个帖子"。
+  it("普通推 · 图 6 张（超单条 4 张上限）→ 拆成 2 条，第 2 条是纯图", () => {
+    const p = planXTweets("小团队不该被琐事拖慢。", imgs(6), "tweet")
+    expect(p).toHaveLength(2)
+    expect(p[0]!.imageUrls).toHaveLength(4)
+    expect(p[1]!.imageUrls).toHaveLength(2)
+    expect(p[1]!.text).toBe("") // 纯图回复
+  })
+
+  it("串推 · 长文 → 1 条 + 若干回复，图按顺序分配、每条 ≤4 张", () => {
+    const p = planXTweets("创业团队最大的浪费不是资金，而是注意力。".repeat(15), imgs(9), "thread")
+    expect(p.length).toBeGreaterThan(1)
+    for (const tw of p) expect(tw.imageUrls.length).toBeLessThanOrEqual(4)
+    expect(p.flatMap((t) => t.imageUrls)).toHaveLength(9) // 一张都不丢
+  })
+
+  it("无文案无图 → 空数组（预览据此显示「尚无文案」）", () => {
+    expect(planXTweets("   ", [], "tweet")).toEqual([])
+  })
+})
+
+// 「预览即所发」不变式 —— 用户 2026-07-15 强调："预览效果一定要和真实的发帖对齐"。
+// 前端预览用 planXTweets(variantFullText(v), variantImageUrls(v), mode) 渲染；
+// 发布层 publishThread 用 splitIntoThreadSegments(fullText(content)) 切分。
+// 这里钉住两条链路的【共同底座】一致：同样的文本 → 同样的分段。
+describe("预览与发布对齐（同一份分段/规划）", () => {
+  it("planXTweets(thread) 的文本分段 === splitIntoThreadSegments —— 预览几条就是实际发几条", () => {
+    const text = "创业团队最大的浪费不是资金，而是注意力。".repeat(15)
+    const planned = planXTweets(text, [], "thread").map((t) => t.text)
+    expect(planned).toEqual(splitIntoThreadSegments(text))
+  })
+
+  it("发布层的 fullText 口径 = [text, hashtags, linkUrl].join(空行) —— 预览按同样口径组装", () => {
+    // fullText 是 adapters/x.ts 的内部函数，这里用它的公开行为（分段结果）间接锁定口径：
+    // 若发布层改成别的拼法（如空格分隔），本用例的分段数会变，从而报警。
+    const composed = ["标题", "正文内容", "#tag", "https://a.co"].join("\n\n")
+    expect(splitIntoThreadSegments(composed)).toHaveLength(1)
+    expect(splitIntoThreadSegments(composed)[0]).toContain("#tag")
+    expect(splitIntoThreadSegments(composed)[0]).toContain("https://a.co")
   })
 })

@@ -8,6 +8,7 @@ import { useLang } from "@/features/social/i18n"
 import { cn } from "@/lib/utils"
 import { CircleCheck, ImageIcon, Info, Pencil, RefreshCw } from "lucide-react"
 import { deriveMode, ratioOf, validations } from "./helpers"
+import { PlatformFrame } from "./platform-frames"
 
 /* ---------- preview ---------- */
 export function PreviewCard({
@@ -36,6 +37,12 @@ export function PreviewCard({
 
   return (
     <div className="mt-3 space-y-3">
+      {/* X 专属：【真实发布效果】——跟随「普通推 / 串推 / Article」实时变化。
+          2026-07-15 用户反馈"预览没随形态切换而改变"：此前右侧只有下面那个编辑态卡片，
+          它按 imageSlots 渲染编辑视图，完全不看 xPostType，所以切形态毫无反应。
+          （我第一次修错了对象——改的是内容库弹窗用的 PlatformFrame，不是这里。）
+          这个区块用与发布层同源的 planXTweets 渲染，所见即所发。 */}
+      {variant.platform === "X" ? <XLivePreview variant={variant} /> : null}
       <div className="rounded-lg border border-border bg-background p-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -53,7 +60,7 @@ export function PreviewCard({
               mode === "auto" ? "bg-[oklch(0.95_0.05_150)] text-status-published" : "bg-[oklch(0.96_0.04_70)] text-[oklch(0.48_0.13_55)]",
             )}
           >
-            {mode === "auto" ? t("Auto publishing available", "支持自动发布") : t("Manual fallback required", "需转手动发布")}
+            {mode === "auto" ? t("Auto publishing available", "支持自动发布") : t("Auto publishing unsupported", "不支持自动发布")}
           </span>
         </div>
 
@@ -210,6 +217,33 @@ function SlotPreview({
           ) : null}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * X 的「真实发布效果」预览 —— 直接复用 PlatformFrame（它内部已按 xPostType 分流成
+ * 普通推 / 串推 / Article 三种渲染，且分段与配图分配来自与发布层同源的 planXTweets）。
+ *
+ * 放在编辑态卡片【上方】：用户改文案/切形态 → 立刻看到会发成几条、每条长什么样。
+ * 2026-07-15：此前右侧只有编辑态卡片，它按 imageSlots 渲染、完全不看 xPostType，
+ * 所以切「普通推/串推/Article」毫无反应（我第一次还改错了对象——改的是内容库弹窗用的那个）。
+ */
+function XLivePreview({ variant }: { variant: PostVariant }) {
+  const { t } = useLang()
+  const label =
+    variant.xPostType === "thread"
+      ? t("Thread", "串推")
+      : variant.xPostType === "article"
+        ? t("Article", "长文")
+        : t("Single tweet", "普通推文")
+  return (
+    <div className="rounded-lg border border-brand/30 bg-brand-muted/30 p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-brand-muted-foreground">
+        <CircleCheck className="size-3.5" />
+        {t(`Live preview · ${label}`, `真实发布效果 · ${label}`)}
+      </p>
+      <PlatformFrame variant={variant} />
     </div>
   )
 }

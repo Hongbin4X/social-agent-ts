@@ -8,6 +8,7 @@
 import type { Database } from "../client"
 import { DrizzleAccountRepo, type AccountRepo } from "./account.repo"
 import { DrizzleBillingRecordRepo, type BillingRecordRepo } from "./billing-record.repo"
+import { DrizzlePublishRecordRepo, type PublishRecordRepo } from "./publish-record.repo"
 import { DrizzleCalendarRepo, type CalendarRepo } from "./calendar.repo"
 import { DrizzleGenerationJobRepo, type GenerationJobRepo } from "./generation-job.repo"
 import { DrizzleMediaRepo, type MediaRepo } from "./media.repo"
@@ -28,6 +29,8 @@ export interface Repositories {
   media: MediaRepo
   generationJobs: GenerationJobRepo
   billingRecords: BillingRecordRepo
+  /** 发布记录：这条帖子发到过哪些账号、链接是什么。支持「换个号再发」与回看。 */
+  publishRecords: PublishRecordRepo
   prompts: PromptRepo
 }
 
@@ -43,6 +46,7 @@ export function createRepositories(db: Database): Repositories {
     media: new DrizzleMediaRepo(db),
     generationJobs: new DrizzleGenerationJobRepo(db),
     billingRecords: new DrizzleBillingRecordRepo(db),
+    publishRecords: new DrizzlePublishRecordRepo(db),
     prompts: new DrizzlePromptRepo(db),
   }
 }
@@ -62,6 +66,7 @@ export type {
   BillingRecordRepo,
   BillingRecordRow,
 } from "./billing-record.repo"
+export type { PublishRecordInput, PublishRecordRepo, PublishRecordRow } from "./publish-record.repo"
 export type {
   CalendarItemInput,
   CalendarItemPatch,
