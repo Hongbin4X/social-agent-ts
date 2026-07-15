@@ -194,6 +194,8 @@ function XFrame({ variant }: { variant: PostVariant }) {
 function XTweetSequence({ variant, mode }: { variant: PostVariant; mode: "tweet" | "thread" }) {
   const { t } = useLang()
   const planned = planXTweets(variantFullText(variant), variantImageUrls(variant), mode)
+  // 正文里标了几个内联图槽：>1 个说明用户在用"图文相间"的心智写文案，而 X 做不到——如实提示。
+  const inlineSlotCount = splitBodyByImageTokens(variant.body ?? "").filter((x) => x.type === "image").length
   if (planned.length === 0) {
     return (
       <Card>
@@ -204,6 +206,18 @@ function XTweetSequence({ variant, mode }: { variant: PostVariant; mode: "tweet"
   const multi = planned.length > 1
   return (
     <div className="flex flex-col gap-1.5">
+      {/* ⚠️ 内联图落差提示（2026-07-15 实测确认）：X 的推文【没有内联图】——
+          不管 [[img:N]] 写在正文哪个位置，图片一律作为附件渲染在正文【下方】。
+          用户写文案时的心理预期是"图出现在这一段后面"，不提示的话会到发完才发现落差。
+          实测依据：4 张图成功、5 张被 X 拒（400 "maximum of 4 items"）。 */}
+      {inlineSlotCount > 1 ? (
+        <p className="rounded-md bg-[oklch(0.97_0.03_70)] px-2.5 py-1.5 text-xs text-[oklch(0.48_0.13_55)]">
+          {t(
+            "X has no inline images — all images are attached below the text, regardless of where you put them. Use a thread if you want each image to follow its own paragraph.",
+            "X 不支持内联图：无论你把图放在正文哪里，都会统一附在文字下方。想让每张图跟在对应段落后面，请改用串推。",
+          )}
+        </p>
+      ) : null}
       {/* 一眼看出会发成几条——这是用户最关心的"真实效果"。 */}
       {multi ? (
         <p className="text-xs font-medium text-muted-foreground">

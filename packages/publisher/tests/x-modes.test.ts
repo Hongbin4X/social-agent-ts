@@ -324,3 +324,22 @@ describe("预览与发布对齐（同一份分段/规划）", () => {
     expect(splitIntoThreadSegments(composed)[0]).toContain("https://a.co")
   })
 })
+
+// X 平台硬规则 —— 2026-07-15 用真实账号 @KonoeKKK 实测得出（不是抄文档）：
+// 4 张图发布成功；5 张被 X 拒绝：HTTP 400 "$.media.media_ids: there must be a maximum of 4 items"。
+// 这条测试守住"我们永远不会给 X 送超过 4 张图"，免得线上才被平台打回来。
+describe("X 图片张数硬上限（实测得出）", () => {
+  it("planXTweets 永不让单条超过 4 张图", () => {
+    const imgs = Array.from({ length: 13 }, (_, i) => `i${i}.jpg`)
+    for (const mode of ["tweet", "thread"] as const) {
+      for (const tw of planXTweets("正文内容。", imgs, mode)) {
+        expect(tw.imageUrls.length).toBeLessThanOrEqual(4)
+      }
+    }
+  })
+  it("图多于 4 张时拆条而不是丢图", () => {
+    const imgs = Array.from({ length: 13 }, (_, i) => `i${i}.jpg`)
+    const planned = planXTweets("正文内容。", imgs, "tweet")
+    expect(planned.flatMap((t) => t.imageUrls)).toHaveLength(13)
+  })
+})
