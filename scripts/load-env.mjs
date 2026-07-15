@@ -16,8 +16,28 @@
 import path from "node:path"
 import { existsSync } from "node:fs"
 
-/** 仓库根（相对本文件定位，不受启动 cwd 影响 —— 旧代码用 "../../.env" 依赖 cwd，换个目录跑就读不到）。 */
-export const REPO_ROOT = path.resolve(import.meta.dirname, "..")
+/**
+ * 仓库根（相对本文件定位，不受启动 cwd 影响 —— 旧代码用 "../../.env" 依赖 cwd，换个目录跑就读不到）。
+ *
+ * ⚠️ import.meta.dirname 的兜底：drizzle-kit 会把 drizzle.config.ts 编译成 CJS 再执行，
+ * 那里 `import.meta` 是空的（esbuild 会告警 "import.meta is not available with the cjs output format"），
+ * 于是 import.meta.dirname === undefined → path.resolve 抛 "paths[0] must be of type string"。
+ * 此时退回按 cwd 上溯找 pnpm-workspace.yaml 定位仓库根——比直接崩掉强，也比写死路径稳。
+ */
+function findRepoRoot() {
+  const here = import.meta.dirname
+  if (here) return path.resolve(here, "..")
+  let dir = process.cwd()
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(path.join(dir, "pnpm-workspace.yaml"))) return dir
+    const up = path.dirname(dir)
+    if (up === dir) break
+    dir = up
+  }
+  return process.cwd()
+}
+
+export const REPO_ROOT = findRepoRoot()
 
 /**
  * 按 APP_ENV 加载 .env.<profile> + .env 到 process.env。

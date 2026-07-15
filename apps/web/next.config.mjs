@@ -7,8 +7,17 @@ import { loadEnv } from "../../scripts/load-env.mjs"
 // 后端也读同一份根 env，前后端配置从此单一真相源，不会各持一半打架。
 const APP_ENV = loadEnv()
 
+// 部署在【共享域名的路径前缀】下时用（如 testtapi2.broly.ai/social/ —— 那台测试服上
+// ai-api/user-api/oms-api 全按路径前缀分流，我们沿用同一套路，免加 DNS 子域）。
+// 留空 = 应用在根路径（本地开发、独立域名部署）。取值形如 "/social"（前有斜杠、后无斜杠）。
+const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/$/, "")
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 应用整体挂到 BASE_PATH 下：页面 /social/*、静态资源 /social/_next/*、rewrites 的 source 也自动带前缀。
+  // ⚠️ basePath 【不会】自动改写代码里写死的 fetch("/bff/...")——那是从站点根发的绝对路径，
+  // 会打到 /bff 而非 /social/bff 直接 404。故 api.ts 用 NEXT_PUBLIC_BASE_PATH 自行拼前缀（见该文件）。
+  ...(BASE_PATH ? { basePath: BASE_PATH } : {}),
   // ⚠️ Next 16 默认只允许 localhost 访问 dev 资源（/_next/*、HMR websocket），其它来源一律拦截。
   // 后果极具迷惑性：页面 HTTP 200、JS chunk 也 200、控制台【无报错】，但 dev 运行时起不来 →
   // React 不水合 → 整页【白屏】。2026-07-15 实测：同一个服务，localhost:3001 渲染出登录框，
@@ -26,6 +35,8 @@ const nextConfig = {
     NEXT_PUBLIC_DEV_USER_ID: process.env.NEXT_PUBLIC_DEV_USER_ID ?? "",
     // 仅用于页面上标明当前连的是哪套环境，避免对着测试环境以为在本地（或反之）。
     NEXT_PUBLIC_APP_ENV: APP_ENV,
+    // 路径前缀，供 api.ts 拼 fetch 基址（见上方 basePath 注释）。
+    NEXT_PUBLIC_BASE_PATH: BASE_PATH,
   },
   // 显式锁定 workspace 根，避免 Next 误把 /home/ec2-user 下的父 lockfile 当根。
   turbopack: {
